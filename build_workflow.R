@@ -106,3 +106,4 @@ devtools::build()
 # so you can use it like any other package (`library(deepReveal)`).
 devtools::install()
 
+
