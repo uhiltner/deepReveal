@@ -1,0 +1,35 @@
+Package: deepReveal
+Title: A Framework for Sensitivity Analysis of Ecological Neural Networks
+Version: 0.1.0
+Authors@R: person("Ulrike", "Hiltner", email = "ulrike.hiltner@usys.ethz.ch", role = c("aut", "cre"),
+              comment = c(ORCID = "0000-0001-5663-7068"))
+Description: Provides a suite of tools to conduct comprehensive sensitivity analyses on complex predictive models, 
+    particularly neural networks used in ecological and environmental modeling. Includes functions for 
+    permutation feature importance, analysis of model sensitivity to variations in feature values, 
+    and assessment of performance across different feature sets.
+License: GPL-3 + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    cowplot,
+    dplyr,
+    entropy,
+    ggplot2,
+    magrittr,
+    Metrics,
+    philentropy,
+    RColorBrewer,
+    readr,
+    rlang,
+    stringr,
+    tidyr,
+    viridis
+Suggests: 
+    keras,
+    keras3,
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+Depends: 
+    R (>= 2.10)
+RoxygenNote: 7.3.1

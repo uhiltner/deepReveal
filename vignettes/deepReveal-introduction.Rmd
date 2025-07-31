@@ -1,0 +1,393 @@
+---
+title: "Using deepReveal: A User Guide to Neural Network Sensitivity Analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{deepReveal Tutorial: From Black Box to Insight}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+## 1. Introduction: Opening the Black Box
+
+Neural networks (NNs) are powerful tools for modeling complex systems, capable of learning intricate, non-linear relationships directly from data. As demonstrated in the manuscript "Bridging data gaps in forestry," they can accurately predict complex, multivariate outputs like forest stem size distributions (SSDs).
+
+However, this power comes with a challenge: NNs are often perceived as "black boxes." It can be difficult to understand *why* a model makes a certain prediction. This is a significant barrier to their adoption in scientific research and management, where interpretability, transparency, and trust are paramount. How can we be sure our model has learned ecologically meaningful patterns and is not just fitting to noise?
+
+The `deepReveal` package is designed to address this challenge. It provides a comprehensive and flexible framework for conducting sensitivity analyses on Keras-based models, turning the "black box" into a transparent tool for scientific inquiry. This vignette serves as a practical tutorial, guiding you through a systematic workflow to dissect a trained NN, understand its behavior, and assess its robustness.
+
+By following this guide, you will learn how to answer critical modeling questions:
+
+* **Feature Importance:** Which of my input variables are the primary drivers of my model's predictions?
+
+* **Model Behavior:** How, specifically, do my model's predictions change in response to its key drivers? Are the learned relationships linear, non-linear, or threshold-based?
+
+* **Robustness & Parsimony:** How sensitive is my model to the specific set of features it was trained on? Could a simpler, more parsimonious model with fewer inputs achieve comparable performance?
+
+## 2. Setup: Loading Packages and Preparing Data
+
+First, we load the `deepReveal` package. This workflow also requires a working Python environment with TensorFlow and a Keras R package (`keras` or `keras3`) installed.
+
+```{r load-packages, eval=TRUE}
+library(deepReveal)
+library(ggplot2) 
+library(dplyr)
+```
+
+The package includes example data (`deepReveal_example_data`) and a pre-trained Keras model. For this tutorial, we will save these to a temporary directory, as the `deepReveal` functions are designed to work with file paths. 
+**Note:** The directory created by `tempdir()` is deleted automatically when you close your R session.
+
+```{r load-data, eval=TRUE}
+# Create a clean temporary directory for this session's outputs
+temp_dir <- tempdir()
+
+# Load the example data object from the package
+data("deepReveal_example_data")
+
+# Save the data object to a temporary file
+model_data_path <- file.path(temp_dir, "deepReveal_example_data.RData")
+save(deepReveal_example_data, file = model_data_path)
+
+# Step 1: Get the full, absolute file path to the model inside the package.
+# The system.file() function is the standard R way to do this.
+model_path <- system.file("extdata", "deepReveal_example_model.keras",
+                          package = "deepReveal")
+# You can print the path to see what it looks like on your machine
+#print(model_path)
+
+# Step 2: Load the model from that path using the keras load_model() function.
+# This is where the model is actually read from the file and loaded into memory.
+loaded_model <- keras3::load_model(model_path)
+
+# Now you can use the model
+#summary(loaded_model)
+
+```
+
+
+---
+
+## **Part 1: A Simple Workflow - Analyzing a Pre-Trained Model**
+
+This workflow is the most common starting point. You have already trained a model and now want to "open the black box" to understand its behavior.
+
+### 1. Permutation Feature Importance: What Drives the Model?
+
+**Methodological Context:** A model with dozens of input features can be difficult to interpret. The first step is to identify which of these inputs have the greatest influence on its predictions. Permutation Feature Importance (PFI) is a robust, model-agnostic technique for this. It works by systematically shuffling the values of one feature at a time and measuring how much that random shuffling degrades the model's performance. A large drop in performance indicates that the model relies heavily on that feature to make accurate predictions. This technique is particularly powerful because it reflects the feature's importance in the context of the fully trained, potentially complex model, accounting for any learned interactions.
+
+In our manuscript, PFI revealed that aggregated stand structural variables (like total stem number and basal area) were far more influential than site or climate factors for predicting SSDs. Let's replicate that analysis. Our example model was trained with a custom loss function. To load it correctly, we must provide the `custom_loss_alpha` parameter.
+
+```{r run-pfi, eval=FALSE}
+# We will use the Kullback-Leibler (KL) divergence as our performance metric,
+# as it is well-suited for comparing probability distributions like SSDs.
+metric_func <- kl_divergence_metric 
+
+# Run the PFI analysis. The function returns a list containing the
+# results data frame and the ggplot object.
+pfi_output <- permutation_feature_importance(
+  model_path = model_path,
+  model_data_name = "deepReveal_example_data",
+  model_data_path = model_data_path,
+  input_feature_set = "full.inputs",
+  metric_function = metric_func,
+  plot_filename = "pfi_benchmark_model.pdf",
+  plot_save_path = temp_dir,
+  bar_color = "orange2",
+  higher_is_better = FALSE, # Lower KL divergence is better
+  n_permutations = 10,
+  seed = 123
+)
+# Display the most important features
+#head(pfi_output$results)
+
+# Display the generated plot
+#print(pfi_output$plot)
+
+```
+
+### 2. Feature Value Sensitivity: How Does the Model Respond?
+
+**Methodological Context:** Now that we know *which* features are important, the next question is *how* the model responds to them. Does it learn simple linear relationships, or more complex, non-linear ones that are more common in real-world systems? The `feature_value_sensitivity` function helps answer this by performing two analyses:
+
+1.  **Range-Response Analysis:** This shows the functional relationship the model has learned. It reveals how the predictions change as a key feature is varied across its entire observed range, providing a visual curve of the model's response.
+
+2.  **Error Effect Analysis:** This simulates the impact of small measurement errors (e.g., +/- 10%) or natural variability in the input data, showing how sensitive the model's outputs are to such perturbations.
+
+This step is crucial for building confidence in the model and ensuring it has learned ecologically plausible relationships that go beyond simple correlations.
+
+```{r run-fvs, eval=FALSE}
+# Use the results from the PFI analysis to select the top features
+pfi_results <- pfi_output$results
+
+# For more readable plots, we can provide custom labels for our target variables.
+# The names of the vector must match the raw feature names.
+# 1. Get the raw target feature names from the example data
+target_names <- deepReveal_example_data$target_features
+
+# 2. Create a complete, named list of custom labels
+custom_target_labs_full <- c(
+  "stems.ha_dbhclass10" = "DBH: (8, 11.5] cm",
+  "stems.ha_dbhclass13" = "DBH: (11.5, 15] cm",
+  "stems.ha_dbhclass17" = "DBH: (15, 20] cm",
+  "stems.ha_dbhclass22" = "DBH: (20, 25] cm",
+  "stems.ha_dbhclass27" = "DBH: (25, 30] cm",
+  "stems.ha_dbhclass32" = "DBH: (30, 35] cm",
+  "stems.ha_dbhclass37" = "DBH: (35, 40] cm",
+  "stems.ha_dbhclass42" = "DBH: (40, 45] cm",
+  "stems.ha_dbhclass47" = "DBH: (45, 50] cm",
+  "stems.ha_dbhclass52" = "DBH: >50 cm"
+)
+# Ensure the names of your labels vector match the target_names
+names(custom_target_labs_full) <- target_names
+
+# Run the sensitivity analysis on the top 4 features
+sensitivity_output <- feature_value_sensitivity(
+  model_path = model_path,
+  model_data_name = "deepReveal_example_data",
+  model_data_path = model_data_path,
+  importance_results = pfi_results,
+  top_n_features = 4,
+  target_labels = custom_target_labs_full,
+  plot_filename_base = "feature_sensitivity_example",
+  plot_save_path = temp_dir,
+  seed = 123
+)
+
+# You can now view the returned plot objects
+#print(sensitivity_output$range_plot)
+#print(sensitivity_output$percent_change_plot)
+
+```
+
+---
+
+## **Part 2: Minimal Workflow for Training and Evaluation**
+
+This part demonstrates a complete, end-to-end workflow for a user who wants to define their own model architecture, train it on the provided example data, and visualize its performance.
+
+### 1. Defining and Training a Custom Model
+
+The core of the package is the `compile_fit_predict_nn` function, which orchestrates the entire training process. To use it, you first define a function that builds a Keras model and a list that holds all the configuration parameters.
+
+```{r define-and-train-custom-model, eval=FALSE}
+# Step 1: Define a function that creates a Keras model.
+# It must accept `input_shape` and `output_units` as arguments.
+create_simple_nn <- function(input_shape, output_units, units1 = 32, activation = "relu") {
+  if (requireNamespace("keras3", quietly = TRUE)) {
+    k_pkg <- "keras3"
+  } else if (requireNamespace("keras", quietly = TRUE)) {
+    k_pkg <- "keras"
+  } else {
+    stop("A Keras package ('keras' or 'keras3') is required.")
+  }
+  keras_model_sequential <- get("keras_model_sequential", asNamespace(k_pkg))
+  layer_dense <- get("layer_dense", asNamespace(k_pkg))
+
+  model <- keras_model_sequential(name = "MySimpleModel") %>%
+    layer_dense(units = units1, activation = activation, input_shape = input_shape) %>%
+    layer_dense(units = output_units, activation = 'softmax')
+  return(model)
+}
+
+# Step 2: Load the data into the environment.
+data("deepReveal_example_data")
+model_data <- deepReveal_example_data
+
+# The example data contains 387 training, 26 validation, and 70 test instances.
+train_df <- model_data$train_data
+val_df <- model_data$val_data
+test_df <- model_data$test_data
+
+input_features <- model_data$input_features
+target_features <- model_data$target_features
+
+# Step 3: Run the training function.
+training_results <- compile_fit_predict_nn(
+  train_data = train_df,
+  validation_data = val_df,
+  test_data = test_df,
+  input_features = input_features,
+  target_features = target_features,
+  build_model_func = create_simple_nn,
+  build_params = list(units1 = 20, activation = "relu"),
+  fit_params = list(epochs = 10, batch_size = 8),
+  loss = "kl_divergence",
+  seed = 123
+)
+
+```
+
+
+### 2. Visualizing the Custom Model's Performance
+
+After training, you can evaluate the model in two ways: by plotting its training history (e.g., loss over epochs) and by using the package's detailed `analyze_and_visualize_predictions` function.
+
+```{r visualize-custom-model, eval=FALSE}
+# --- Visualization 1: Plotting Training History and 1:1 plot ---
+
+# Helper function to plot loss vs. validation loss
+plot_training_history <- function(history) {
+  history_df <- as.data.frame(history$metrics)
+  history_df$epoch <- 1:nrow(history_df)
+  
+  ggplot(history_df, aes(x = epoch)) +
+    geom_line(aes(y = loss, color = "Training Loss")) +
+    geom_line(aes(y = val_loss, color = "Validation Loss")) +
+    labs(title = "Model Training History", x = "Epoch", y = "Loss") +
+    scale_color_manual(name = "Metric", values = c("Training Loss" = "blue", "Validation Loss" = "magenta")) +
+    theme_bw() +
+    theme(legend.position = "bottom")
+}
+
+# Plot the history from our training results
+#plot_training_history(training_results$history)
+
+
+# --- Visualization 2: Detailed Prediction Analysis ---
+
+# First, combine the test data with the model's predictions
+test_data_with_preds <- dplyr::bind_cols(
+  test_df,
+  training_results$predictions
+)
+
+# Select some stands to see in the detailed histogram plot
+stands_to_plot <- utils::head(test_df$inventory_id, 4)
+
+# Run the detailed visualization and analysis function
+viz_output <- analyze_and_visualize_predictions(
+  test_data_with_predictions = test_data_with_preds,
+  target_features = target_features,
+  selected_stands = stands_to_plot,
+  stand_id_col = "inventory_id"
+)
+
+# Print the generated scatterplot (target feature level) and histogram (target across instance level)
+#print(viz_output$plots$scatterplot)
+#print(viz_output$plots$histogram)
+
+```
+
+
+## **Part 3: An Advanced Workflow – Assessing Model Parsimony**
+
+This part demonstrates how to systematically test for model parsimony. The goal is to determine if a model with fewer input features can perform comparably to a more complex one. This is achieved by retraining new models from scratch using only subsets of the original features.
+
+### 1. Automated Retraining on Feature Subsets
+
+The `run_feature_set_sensitivity_training` function automates the process. It takes a list of feature subsets and a model configuration "recipe," then trains a new model for each subset. For this workflow, we use a recipe (`nn_config_builtin`) that defines the same architecture as the pre-trained benchmark model, ensuring a fair comparison.
+
+```{r run-fs-training, eval=FALSE}
+# This configuration is a RECIPE to build new models that replicate the
+# architecture from the original manuscript. It is NOT used to load a file.
+nn_config_builtin <- list(
+  architecture = "manuscript_model_v3",
+  build_params = list(lambda1 = 1e-5, lambda2 = 1e-5, activation = "relu"),
+  fit_params = list(epochs = 10, batch_size = 16),
+  loss = "kl_divergence",
+  seed = 42
+)
+
+# Define the feature sets to test, based on our PFI results from Part 1
+feature_sets_list <- list(
+  Top2_Features = head(pfi_output$results$Feature, 2),
+  Top4_Features = head(pfi_output$results$Feature, 4),
+  Top8_Features = head(pfi_output$results$Feature, 8)
+)
+
+# Define where to save the results
+fs_training_results_path <- file.path(temp_dir, "fs_training_results.RData")
+
+# Run the automated training workflow. Note: This is computationally intensive. 
+# The function does not return a large object directly into your R environment.
+# This is a deliberate design choice for robustness. Training multiple neural networks 
+# can be a very long and memory-intensive process: your work is save, memory is managed, the workflow is modular.
+run_feature_set_sensitivity_training(
+  model_data_name = "deepReveal_example_data",
+  model_data_path = model_data_path,
+  feature_sets_list = feature_sets_list,
+  compile_fit_predict_nn_func = compile_fit_predict_nn,
+  nn_config = nn_config_builtin,
+  output_rdata_path = fs_training_results_path,
+  save_trained_models_path = file.path(temp_dir, "fs_models")
+)
+
+```
+
+
+
+### 2. Visualizing Feature Set Sensitivity
+
+The final step is to visualize the performance of all the retrained models. The `plot_feature_set_val_loss_heatmap` function creates a powerful summary that makes it easy to see how performance (measured by minimum validation loss) changes as features are added or removed, allowing you to identify the most effective and parsimonious feature set at a glance.
+
+```{r plot-heatmap, eval=FALSE}
+# This code visualizes the results from the .RData file generated above.
+heatmap_output <- plot_feature_set_val_loss_heatmap(
+  sensitivity_results_rdata_path = fs_training_results_path,
+  importance_results = pfi_output$results, # Use PFI results from Part 1 for ordering
+  plot_filename = "feature_set_heatmap.pdf",
+  plot_save_path = temp_dir,
+  plot_title = "Model Performance Across Feature Subsets"
+)
+
+#print(heatmap_output$plot)
+
+```
+
+
+### 3. Detailed Analysis of Parsimonious Models
+
+After identifying promising, simpler models from the heatmap, you will want to perform the same detailed diagnostic analysis on them as you did for the original benchmark model. The `generate_feature_set_prediction_plots` function automates this. It takes the results from the sensitivity training and, for each retrained model (e.g., for the "Top4_Features" model), it generates a full set of diagnostic plots and statistics.
+
+```{r generate-detailed-plots, eval=FALSE}
+# This function creates a new subdirectory for each feature set,
+# containing detailed prediction plots and statistics.
+
+# Define a base path for the output plots
+detailed_plots_path <- file.path(temp_dir, "detailed_feature_set_plots")
+
+# Run the plot generation function
+all_set_stats <- generate_feature_set_prediction_plots(
+  sensitivity_results_rdata_path = fs_training_results_path,
+  analyze_and_visualize_predictions_func = analyze_and_visualize_predictions,
+  plot_save_path_base = detailed_plots_path,
+  stand_id_col = "inventory_ids",
+  num_stands_for_histograms = 4
+)
+
+
+# The function saves all plots to disk. You can inspect the `all_set_stats`
+# object to see the aggregated statistics for each model.
+head(all_set_stats$Top4_Features$class_stats)
+print(all_set_stats$Top2_Features$plots$scatterplot)
+print(all_set_stats$Top2_Features$plots$histogram)
+
+```
+
+
+## 3. Conclusion
+
+This vignette has guided you through the primary workflows of the `deepReveal` package, demonstrating how to move from a "black box" neural network to an interpretable tool for scientific inquiry. You have learned how to:
+
+* Analyze a pre-trained model to identify its key drivers using permutation feature importance (run-pfi).
+
+* Explore the model's learned functional relationships using feature value sensitivity analysis (run-fvs).
+
+* Define, train, and evaluate a custom neural network from scratch using the package's core training and visualization functions (define-and-train-custom-model, visualize-custom-model).
+
+* Systematically assess model parsimony by automatically retraining and comparing models with different feature subsets (run-fs-training, plot-heatmap).
+
+By following these steps, you can gain a much deeper understanding of your model's behavior, build confidence in its predictions, and produce robust, interpretable results.
+
+*A Note on Temporary Files :* Throughout this tutorial, all outputs (plots, data files, and saved models) were saved to a temporary directory created by the `tempdir()` function. This directory is specific to your current R session. When you close R or RStudio, this directory and all of its contents will be deleted automatically, ensuring your system remains clean.
+
+Happy modeling!
+
+Ulrike
+

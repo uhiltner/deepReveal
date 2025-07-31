@@ -1,0 +1,36 @@
+# RStudio and R temporary files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.Renviron
+
+# R package build artifacts
+*.Rcheck/
+*.tar.gz
+*.Rinst
+*~
+*.o
+*.so
+*.dll
+
+# Generated documentation
+man/
+NAMESPACE
+deepReveal.pdf
+
+# Vignette build products
+vignettes/*.html
+vignettes/*.R
+doc/
+
+# devtools and usethis files
+.Rbuildignore
+_pkgdown.yml
+pkgdown/
+
+# macOS files
+.DS_Store
+
+# User-specific files (if any)
+/credentials/
