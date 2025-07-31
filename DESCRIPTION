@@ -1,5 +1,5 @@
 Package: deepReveal
-Title: A Framework for Sensitivity Analysis of Ecological Neural Networks
+Title: A Framework for Sensitivity Analysis of Neural Networks
 Version: 0.1.0
 Authors@R: person("Ulrike", "Hiltner", email = "ulrike.hiltner@usys.ethz.ch", role = c("aut", "cre"),
               comment = c(ORCID = "0000-0001-5663-7068"))

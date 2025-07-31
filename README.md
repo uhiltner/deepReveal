@@ -83,13 +83,13 @@ print(pfi_output$plot)
 
 To cite this package in your work, please use:
 
-> Hiltner, U. (2025). deepReveal: A Framework for Sensitivity Analysis of Ecological Neural Networks. R package version 0.1.0.
+> Hiltner, U. (2025). deepReveal: A Framework for Sensitivity Analysis of Neural Networks. R package version 0.1.0.
 
 A BibTeX entry for LaTeX users is:
 
 ```
 @Manual{,
-  title = {deepReveal: A Framework for Sensitivity Analysis of Ecological Neural Networks},
+  title = {deepReveal: A Framework for Sensitivity Analysis of Neural Networks},
   author = {Ulrike Hiltner},
   year = {2025},
   note = {R package version 0.1.0},
