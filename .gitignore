@@ -34,3 +34,5 @@ pkgdown/
 
 # User-specific files (if any)
 /credentials/
+/doc/
+/Meta/
