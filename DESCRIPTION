@@ -1,8 +1,11 @@
 Package: deepReveal
 Title: A Framework for Sensitivity Analysis of Neural Networks
 Version: 0.1.0
+Date: 2026-04-16
 Authors@R: person("Ulrike", "Hiltner", email = "ulrike.hiltner@usys.ethz.ch", role = c("aut", "cre"),
               comment = c(ORCID = "0000-0001-5663-7068"))
+URL: https://github.com/uhiltner/deepReveal
+BugReports: https://github.com/uhiltner/deepReveal/issues
 Description: Provides a suite of tools to conduct comprehensive sensitivity analyses on complex predictive models, 
     particularly neural networks used in ecological and environmental modeling. Includes functions for 
     permutation feature importance, analysis of model sensitivity to variations in feature values, 

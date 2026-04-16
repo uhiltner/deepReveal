@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+
+
+<title>Using deepReveal: A User Guide to Neural Network Sensitivity Analysis</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">Using deepReveal: A User Guide to Neural
+Network Sensitivity Analysis</h1>
+
+
+
+<div id="introduction-opening-the-black-box" class="section level2">
+<h2>1. Introduction: Opening the Black Box</h2>
+<p>Neural networks (NNs) are powerful tools for modeling complex
+systems, capable of learning intricate, non-linear relationships
+directly from data. As demonstrated in the manuscript “Bridging data
+gaps in forestry,” they can accurately predict complex, multivariate
+outputs like forest stem size distributions (SSDs).</p>
+<p>However, this power comes with a challenge: NNs are often perceived
+as “black boxes.” It can be difficult to understand <em>why</em> a model
+makes a certain prediction. This is a significant barrier to their
+adoption in scientific research and management, where interpretability,
+transparency, and trust are paramount. How can we be sure our model has
+learned ecologically meaningful patterns and is not just fitting to
+noise?</p>
+<p>The <code>deepReveal</code> package is designed to address this
+challenge. It provides a comprehensive and flexible framework for
+conducting sensitivity analyses on Keras-based models, turning the
+“black box” into a transparent tool for scientific inquiry. This
+vignette serves as a practical tutorial, guiding you through a
+systematic workflow to dissect a trained NN, understand its behavior,
+and assess its robustness.</p>
+<p>By following this guide, you will learn how to answer critical
+modeling questions:</p>
+<ul>
+<li><p><strong>Feature Importance:</strong> Which of my input variables
+are the primary drivers of my model’s predictions?</p></li>
+<li><p><strong>Model Behavior:</strong> How, specifically, do my model’s
+predictions change in response to its key drivers? Are the learned
+relationships linear, non-linear, or threshold-based?</p></li>
+<li><p><strong>Robustness &amp; Parsimony:</strong> How sensitive is my
+model to the specific set of features it was trained on? Could a
+simpler, more parsimonious model with fewer inputs achieve comparable
+performance?</p></li>
+</ul>
+</div>
+<div id="setup-loading-packages-and-preparing-data" class="section level2">
+<h2>2. Setup: Loading Packages and Preparing Data</h2>
+<p>First, we load the <code>deepReveal</code> package. This workflow
+also requires a working Python environment with TensorFlow and a Keras R
+package (<code>keras</code> or <code>keras3</code>) installed.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="fu">library</span>(deepReveal)</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="fu">library</span>(ggplot2) </span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="fu">library</span>(dplyr)</span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="co">#&gt; Attaching package: &#39;dplyr&#39;</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="co">#&gt; The following objects are masked from &#39;package:stats&#39;:</span></span>
+<span id="cb1-7"><a href="#cb1-7" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb1-8"><a href="#cb1-8" tabindex="-1"></a><span class="co">#&gt;     filter, lag</span></span>
+<span id="cb1-9"><a href="#cb1-9" tabindex="-1"></a><span class="co">#&gt; The following objects are masked from &#39;package:base&#39;:</span></span>
+<span id="cb1-10"><a href="#cb1-10" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb1-11"><a href="#cb1-11" tabindex="-1"></a><span class="co">#&gt;     intersect, setdiff, setequal, union</span></span></code></pre></div>
+<p>The package includes example data
+(<code>deepReveal_example_data</code>) and a pre-trained Keras model.
+For this tutorial, we will save these to a temporary directory, as the
+<code>deepReveal</code> functions are designed to work with file paths.
+<strong>Note:</strong> The directory created by <code>tempdir()</code>
+is deleted automatically when you close your R session.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="co"># Create a clean temporary directory for this session&#39;s outputs</span></span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>temp_dir <span class="ot">&lt;-</span> <span class="fu">tempdir</span>()</span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a><span class="co"># Load the example data object from the package</span></span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;deepReveal_example_data&quot;</span>)</span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a><span class="co"># Save the data object to a temporary file</span></span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a>model_data_path <span class="ot">&lt;-</span> <span class="fu">file.path</span>(temp_dir, <span class="st">&quot;deepReveal_example_data.RData&quot;</span>)</span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a><span class="fu">save</span>(deepReveal_example_data, <span class="at">file =</span> model_data_path)</span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a></span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a><span class="co"># Get the full, absolute file path to the model inside the package.</span></span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a><span class="co"># The system.file() function is the standard R way to do this.</span></span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a>model_path <span class="ot">&lt;-</span> <span class="fu">system.file</span>(<span class="st">&quot;extdata&quot;</span>, <span class="st">&quot;deepReveal_example_model.keras&quot;</span>,</span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a>                          <span class="at">package =</span> <span class="st">&quot;deepReveal&quot;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="co"># Note: Loading the model requires a working Python/TensorFlow environment</span></span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a><span class="co"># with either the &#39;keras&#39; or &#39;keras3&#39; R package installed.</span></span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a><span class="co"># Install with: keras3::install_keras() or tensorflow::install_tensorflow()</span></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="co">#</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="co"># Once set up, load the model as follows:</span></span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a>loaded_model <span class="ot">&lt;-</span> keras3<span class="sc">::</span><span class="fu">load_model</span>(model_path)</span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a><span class="co"># Inspect the model architecture:</span></span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a><span class="co"># summary(loaded_model)</span></span></code></pre></div>
+<hr />
+</div>
+<div id="part-1-a-simple-workflow---analyzing-a-pre-trained-model" class="section level2">
+<h2><strong>Part 1: A Simple Workflow - Analyzing a Pre-Trained
+Model</strong></h2>
+<p>This workflow is the most common starting point. You have already
+trained a model and now want to “open the black box” to understand its
+behavior.</p>
+<div id="permutation-feature-importance-what-drives-the-model" class="section level3">
+<h3>1. Permutation Feature Importance: What Drives the Model?</h3>
+<p><strong>Methodological Context:</strong> A model with dozens of input
+features can be difficult to interpret. The first step is to identify
+which of these inputs have the greatest influence on its predictions.
+Permutation Feature Importance (PFI) is a robust, model-agnostic
+technique for this. It works by systematically shuffling the values of
+one feature at a time and measuring how much that random shuffling
+degrades the model’s performance. A large drop in performance indicates
+that the model relies heavily on that feature to make accurate
+predictions. This technique is particularly powerful because it reflects
+the feature’s importance in the context of the fully trained,
+potentially complex model, accounting for any learned interactions.</p>
+<p>In our manuscript, PFI revealed that aggregated stand structural
+variables (like total stem number and basal area) were far more
+influential than site or climate factors for predicting SSDs. Let’s
+replicate that analysis. Our example model was trained with a custom
+loss function. To load it correctly, we must provide the
+<code>custom_loss_alpha</code> parameter.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="co"># We will use the Kullback-Leibler (KL) divergence as our performance metric,</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a><span class="co"># as it is well-suited for comparing probability distributions like SSDs.</span></span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>metric_func <span class="ot">&lt;-</span> kl_divergence_metric </span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a><span class="co"># Run the PFI analysis. The function returns a list containing the</span></span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a><span class="co"># results data frame and the ggplot object.</span></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>pfi_output <span class="ot">&lt;-</span> <span class="fu">permutation_feature_importance</span>(</span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>  <span class="at">model_path =</span> model_path,</span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>  <span class="at">model_data_name =</span> <span class="st">&quot;deepReveal_example_data&quot;</span>,</span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>  <span class="at">model_data_path =</span> model_data_path,</span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>  <span class="at">input_feature_set =</span> <span class="st">&quot;full.inputs&quot;</span>,</span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>  <span class="at">metric_function =</span> metric_func,</span>
+<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a>  <span class="at">plot_filename =</span> <span class="st">&quot;pfi_benchmark_model.pdf&quot;</span>,</span>
+<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a>  <span class="at">plot_save_path =</span> temp_dir,</span>
+<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a>  <span class="at">bar_color =</span> <span class="st">&quot;orange2&quot;</span>,</span>
+<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a>  <span class="at">higher_is_better =</span> <span class="cn">FALSE</span>, <span class="co"># Lower KL divergence is better</span></span>
+<span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a>  <span class="at">n_permutations =</span> <span class="dv">10</span>,</span>
+<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">123</span></span>
+<span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a>)</span>
+<span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a><span class="co"># Display the most important features</span></span>
+<span id="cb4-21"><a href="#cb4-21" tabindex="-1"></a><span class="co">#head(pfi_output$results)</span></span>
+<span id="cb4-22"><a href="#cb4-22" tabindex="-1"></a></span>
+<span id="cb4-23"><a href="#cb4-23" tabindex="-1"></a><span class="co"># Display the generated plot</span></span>
+<span id="cb4-24"><a href="#cb4-24" tabindex="-1"></a><span class="co">#print(pfi_output$plot)</span></span></code></pre></div>
+</div>
+<div id="feature-value-sensitivity-how-does-the-model-respond" class="section level3">
+<h3>2. Feature Value Sensitivity: How Does the Model Respond?</h3>
+<p><strong>Methodological Context:</strong> Now that we know
+<em>which</em> features are important, the next question is <em>how</em>
+the model responds to them. Does it learn simple linear relationships,
+or more complex, non-linear ones that are more common in real-world
+systems? The <code>feature_value_sensitivity</code> function helps
+answer this by performing two analyses:</p>
+<ol style="list-style-type: decimal">
+<li><p><strong>Range-Response Analysis:</strong> This shows the
+functional relationship the model has learned. It reveals how the
+predictions change as a key feature is varied across its entire observed
+range, providing a visual curve of the model’s response.</p></li>
+<li><p><strong>Error Effect Analysis:</strong> This simulates the impact
+of small measurement errors (e.g., +/- 10%) or natural variability in
+the input data, showing how sensitive the model’s outputs are to such
+perturbations.</p></li>
+</ol>
+<p>This step is crucial for building confidence in the model and
+ensuring it has learned ecologically plausible relationships that go
+beyond simple correlations.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="co"># Use the results from the PFI analysis to select the top features</span></span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a>pfi_results <span class="ot">&lt;-</span> pfi_output<span class="sc">$</span>results</span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co"># For more readable plots, we can provide custom labels for our target variables.</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co"># The names of the vector must match the raw feature names.</span></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a><span class="co"># 1. Get the raw target feature names from the example data</span></span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a>target_names <span class="ot">&lt;-</span> deepReveal_example_data<span class="sc">$</span>target_features</span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a></span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="co"># 2. Create a complete, named list of custom labels</span></span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a>custom_target_labs_full <span class="ot">&lt;-</span> <span class="fu">c</span>(</span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass10&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: (8, 11.5] cm&quot;</span>,</span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass13&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: (11.5, 15] cm&quot;</span>,</span>
+<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass17&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: (15, 20] cm&quot;</span>,</span>
+<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass22&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: (20, 25] cm&quot;</span>,</span>
+<span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass27&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: (25, 30] cm&quot;</span>,</span>
+<span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass32&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: (30, 35] cm&quot;</span>,</span>
+<span id="cb5-17"><a href="#cb5-17" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass37&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: (35, 40] cm&quot;</span>,</span>
+<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass42&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: (40, 45] cm&quot;</span>,</span>
+<span id="cb5-19"><a href="#cb5-19" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass47&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: (45, 50] cm&quot;</span>,</span>
+<span id="cb5-20"><a href="#cb5-20" tabindex="-1"></a>  <span class="st">&quot;stems.ha_dbhclass52&quot;</span> <span class="ot">=</span> <span class="st">&quot;DBH: &gt;50 cm&quot;</span></span>
+<span id="cb5-21"><a href="#cb5-21" tabindex="-1"></a>)</span>
+<span id="cb5-22"><a href="#cb5-22" tabindex="-1"></a><span class="co"># Ensure the names of your labels vector match the target_names</span></span>
+<span id="cb5-23"><a href="#cb5-23" tabindex="-1"></a><span class="fu">names</span>(custom_target_labs_full) <span class="ot">&lt;-</span> target_names</span>
+<span id="cb5-24"><a href="#cb5-24" tabindex="-1"></a></span>
+<span id="cb5-25"><a href="#cb5-25" tabindex="-1"></a><span class="co"># Run the sensitivity analysis on the top 4 features</span></span>
+<span id="cb5-26"><a href="#cb5-26" tabindex="-1"></a>sensitivity_output <span class="ot">&lt;-</span> <span class="fu">feature_value_sensitivity</span>(</span>
+<span id="cb5-27"><a href="#cb5-27" tabindex="-1"></a>  <span class="at">model_path =</span> model_path,</span>
+<span id="cb5-28"><a href="#cb5-28" tabindex="-1"></a>  <span class="at">model_data_name =</span> <span class="st">&quot;deepReveal_example_data&quot;</span>,</span>
+<span id="cb5-29"><a href="#cb5-29" tabindex="-1"></a>  <span class="at">model_data_path =</span> model_data_path,</span>
+<span id="cb5-30"><a href="#cb5-30" tabindex="-1"></a>  <span class="at">importance_results =</span> pfi_results,</span>
+<span id="cb5-31"><a href="#cb5-31" tabindex="-1"></a>  <span class="at">top_n_features =</span> <span class="dv">4</span>,</span>
+<span id="cb5-32"><a href="#cb5-32" tabindex="-1"></a>  <span class="at">target_labels =</span> custom_target_labs_full,</span>
+<span id="cb5-33"><a href="#cb5-33" tabindex="-1"></a>  <span class="at">plot_filename_base =</span> <span class="st">&quot;feature_sensitivity_example&quot;</span>,</span>
+<span id="cb5-34"><a href="#cb5-34" tabindex="-1"></a>  <span class="at">plot_save_path =</span> temp_dir,</span>
+<span id="cb5-35"><a href="#cb5-35" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">123</span></span>
+<span id="cb5-36"><a href="#cb5-36" tabindex="-1"></a>)</span>
+<span id="cb5-37"><a href="#cb5-37" tabindex="-1"></a></span>
+<span id="cb5-38"><a href="#cb5-38" tabindex="-1"></a><span class="co"># You can now view the returned plot objects</span></span>
+<span id="cb5-39"><a href="#cb5-39" tabindex="-1"></a><span class="co">#print(sensitivity_output$range_plot)</span></span>
+<span id="cb5-40"><a href="#cb5-40" tabindex="-1"></a><span class="co">#print(sensitivity_output$percent_change_plot)</span></span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="part-2-minimal-workflow-for-training-and-evaluation" class="section level2">
+<h2><strong>Part 2: Minimal Workflow for Training and
+Evaluation</strong></h2>
+<p>This part demonstrates a complete, end-to-end workflow for a user who
+wants to define their own model architecture, train it on the provided
+example data, and visualize its performance.</p>
+<div id="defining-and-training-a-custom-model" class="section level3">
+<h3>1. Defining and Training a Custom Model</h3>
+<p>The core of the package is the <code>compile_fit_predict_nn</code>
+function, which orchestrates the entire training process. To use it, you
+first define a function that builds a Keras model and a list that holds
+all the configuration parameters.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="co"># Step 1: Define a function that creates a Keras model.</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="co"># It must accept `input_shape` and `output_units` as arguments.</span></span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a>create_simple_nn <span class="ot">&lt;-</span> <span class="cf">function</span>(input_shape, output_units, <span class="at">units1 =</span> <span class="dv">32</span>, <span class="at">activation =</span> <span class="st">&quot;relu&quot;</span>) {</span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a>  <span class="cf">if</span> (<span class="fu">requireNamespace</span>(<span class="st">&quot;keras3&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)) {</span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>    k_pkg <span class="ot">&lt;-</span> <span class="st">&quot;keras3&quot;</span></span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a>  } <span class="cf">else</span> <span class="cf">if</span> (<span class="fu">requireNamespace</span>(<span class="st">&quot;keras&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)) {</span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a>    k_pkg <span class="ot">&lt;-</span> <span class="st">&quot;keras&quot;</span></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a>  } <span class="cf">else</span> {</span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a>    <span class="fu">stop</span>(<span class="st">&quot;A Keras package (&#39;keras&#39; or &#39;keras3&#39;) is required.&quot;</span>)</span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a>  }</span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a>  keras_model_sequential <span class="ot">&lt;-</span> <span class="fu">get</span>(<span class="st">&quot;keras_model_sequential&quot;</span>, <span class="fu">asNamespace</span>(k_pkg))</span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a>  layer_dense <span class="ot">&lt;-</span> <span class="fu">get</span>(<span class="st">&quot;layer_dense&quot;</span>, <span class="fu">asNamespace</span>(k_pkg))</span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a></span>
+<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a>  model <span class="ot">&lt;-</span> <span class="fu">keras_model_sequential</span>(<span class="at">name =</span> <span class="st">&quot;MySimpleModel&quot;</span>) <span class="sc">%&gt;%</span></span>
+<span id="cb6-15"><a href="#cb6-15" tabindex="-1"></a>    <span class="fu">layer_dense</span>(<span class="at">units =</span> units1, <span class="at">activation =</span> activation, <span class="at">input_shape =</span> input_shape) <span class="sc">%&gt;%</span></span>
+<span id="cb6-16"><a href="#cb6-16" tabindex="-1"></a>    <span class="fu">layer_dense</span>(<span class="at">units =</span> output_units, <span class="at">activation =</span> <span class="st">&#39;softmax&#39;</span>)</span>
+<span id="cb6-17"><a href="#cb6-17" tabindex="-1"></a>  <span class="fu">return</span>(model)</span>
+<span id="cb6-18"><a href="#cb6-18" tabindex="-1"></a>}</span>
+<span id="cb6-19"><a href="#cb6-19" tabindex="-1"></a></span>
+<span id="cb6-20"><a href="#cb6-20" tabindex="-1"></a><span class="co"># Step 2: Load the data into the environment.</span></span>
+<span id="cb6-21"><a href="#cb6-21" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;deepReveal_example_data&quot;</span>)</span>
+<span id="cb6-22"><a href="#cb6-22" tabindex="-1"></a>model_data <span class="ot">&lt;-</span> deepReveal_example_data</span>
+<span id="cb6-23"><a href="#cb6-23" tabindex="-1"></a></span>
+<span id="cb6-24"><a href="#cb6-24" tabindex="-1"></a><span class="co"># The example data contains 387 training, 26 validation, and 70 test instances.</span></span>
+<span id="cb6-25"><a href="#cb6-25" tabindex="-1"></a>train_df <span class="ot">&lt;-</span> model_data<span class="sc">$</span>train_data</span>
+<span id="cb6-26"><a href="#cb6-26" tabindex="-1"></a>val_df <span class="ot">&lt;-</span> model_data<span class="sc">$</span>val_data</span>
+<span id="cb6-27"><a href="#cb6-27" tabindex="-1"></a>test_df <span class="ot">&lt;-</span> model_data<span class="sc">$</span>test_data</span>
+<span id="cb6-28"><a href="#cb6-28" tabindex="-1"></a></span>
+<span id="cb6-29"><a href="#cb6-29" tabindex="-1"></a>input_features <span class="ot">&lt;-</span> model_data<span class="sc">$</span>input_features</span>
+<span id="cb6-30"><a href="#cb6-30" tabindex="-1"></a>target_features <span class="ot">&lt;-</span> model_data<span class="sc">$</span>target_features</span>
+<span id="cb6-31"><a href="#cb6-31" tabindex="-1"></a></span>
+<span id="cb6-32"><a href="#cb6-32" tabindex="-1"></a><span class="co"># Step 3: Run the training function.</span></span>
+<span id="cb6-33"><a href="#cb6-33" tabindex="-1"></a>training_results <span class="ot">&lt;-</span> <span class="fu">compile_fit_predict_nn</span>(</span>
+<span id="cb6-34"><a href="#cb6-34" tabindex="-1"></a>  <span class="at">train_data =</span> train_df,</span>
+<span id="cb6-35"><a href="#cb6-35" tabindex="-1"></a>  <span class="at">validation_data =</span> val_df,</span>
+<span id="cb6-36"><a href="#cb6-36" tabindex="-1"></a>  <span class="at">test_data =</span> test_df,</span>
+<span id="cb6-37"><a href="#cb6-37" tabindex="-1"></a>  <span class="at">input_features =</span> input_features,</span>
+<span id="cb6-38"><a href="#cb6-38" tabindex="-1"></a>  <span class="at">target_features =</span> target_features,</span>
+<span id="cb6-39"><a href="#cb6-39" tabindex="-1"></a>  <span class="at">build_model_func =</span> create_simple_nn,</span>
+<span id="cb6-40"><a href="#cb6-40" tabindex="-1"></a>  <span class="at">build_params =</span> <span class="fu">list</span>(<span class="at">units1 =</span> <span class="dv">20</span>, <span class="at">activation =</span> <span class="st">&quot;relu&quot;</span>),</span>
+<span id="cb6-41"><a href="#cb6-41" tabindex="-1"></a>  <span class="at">fit_params =</span> <span class="fu">list</span>(<span class="at">epochs =</span> <span class="dv">10</span>, <span class="at">batch_size =</span> <span class="dv">8</span>),</span>
+<span id="cb6-42"><a href="#cb6-42" tabindex="-1"></a>  <span class="at">loss =</span> <span class="st">&quot;kl_divergence&quot;</span>,</span>
+<span id="cb6-43"><a href="#cb6-43" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">123</span></span>
+<span id="cb6-44"><a href="#cb6-44" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="visualizing-the-custom-models-performance" class="section level3">
+<h3>2. Visualizing the Custom Model’s Performance</h3>
+<p>After training, you can evaluate the model in two ways: by plotting
+its training history (e.g., loss over epochs) and by using the package’s
+detailed <code>analyze_and_visualize_predictions</code> function.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="co"># --- Visualization 1: Plotting Training History and 1:1 plot ---</span></span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a><span class="co"># Helper function to plot loss vs. validation loss</span></span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>plot_training_history <span class="ot">&lt;-</span> <span class="cf">function</span>(history) {</span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>  history_df <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(history<span class="sc">$</span>metrics)</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>  history_df<span class="sc">$</span>epoch <span class="ot">&lt;-</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(history_df)</span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a>  </span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a>  <span class="fu">ggplot</span>(history_df, <span class="fu">aes</span>(<span class="at">x =</span> epoch)) <span class="sc">+</span></span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">y =</span> loss, <span class="at">color =</span> <span class="st">&quot;Training Loss&quot;</span>)) <span class="sc">+</span></span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a>    <span class="fu">geom_line</span>(<span class="fu">aes</span>(<span class="at">y =</span> val_loss, <span class="at">color =</span> <span class="st">&quot;Validation Loss&quot;</span>)) <span class="sc">+</span></span>
+<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">&quot;Model Training History&quot;</span>, <span class="at">x =</span> <span class="st">&quot;Epoch&quot;</span>, <span class="at">y =</span> <span class="st">&quot;Loss&quot;</span>) <span class="sc">+</span></span>
+<span id="cb7-12"><a href="#cb7-12" tabindex="-1"></a>    <span class="fu">scale_color_manual</span>(<span class="at">name =</span> <span class="st">&quot;Metric&quot;</span>, <span class="at">values =</span> <span class="fu">c</span>(<span class="st">&quot;Training Loss&quot;</span> <span class="ot">=</span> <span class="st">&quot;blue&quot;</span>, <span class="st">&quot;Validation Loss&quot;</span> <span class="ot">=</span> <span class="st">&quot;magenta&quot;</span>)) <span class="sc">+</span></span>
+<span id="cb7-13"><a href="#cb7-13" tabindex="-1"></a>    <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
+<span id="cb7-14"><a href="#cb7-14" tabindex="-1"></a>    <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">&quot;bottom&quot;</span>)</span>
+<span id="cb7-15"><a href="#cb7-15" tabindex="-1"></a>}</span>
+<span id="cb7-16"><a href="#cb7-16" tabindex="-1"></a></span>
+<span id="cb7-17"><a href="#cb7-17" tabindex="-1"></a><span class="co"># Plot the history from our training results</span></span>
+<span id="cb7-18"><a href="#cb7-18" tabindex="-1"></a><span class="co">#plot_training_history(training_results$history)</span></span>
+<span id="cb7-19"><a href="#cb7-19" tabindex="-1"></a></span>
+<span id="cb7-20"><a href="#cb7-20" tabindex="-1"></a></span>
+<span id="cb7-21"><a href="#cb7-21" tabindex="-1"></a><span class="co"># --- Visualization 2: Detailed Prediction Analysis ---</span></span>
+<span id="cb7-22"><a href="#cb7-22" tabindex="-1"></a></span>
+<span id="cb7-23"><a href="#cb7-23" tabindex="-1"></a><span class="co"># First, combine the test data with the model&#39;s predictions</span></span>
+<span id="cb7-24"><a href="#cb7-24" tabindex="-1"></a>test_data_with_preds <span class="ot">&lt;-</span> dplyr<span class="sc">::</span><span class="fu">bind_cols</span>(</span>
+<span id="cb7-25"><a href="#cb7-25" tabindex="-1"></a>  test_df,</span>
+<span id="cb7-26"><a href="#cb7-26" tabindex="-1"></a>  training_results<span class="sc">$</span>predictions</span>
+<span id="cb7-27"><a href="#cb7-27" tabindex="-1"></a>)</span>
+<span id="cb7-28"><a href="#cb7-28" tabindex="-1"></a></span>
+<span id="cb7-29"><a href="#cb7-29" tabindex="-1"></a><span class="co"># Select some stands to see in the detailed histogram plot</span></span>
+<span id="cb7-30"><a href="#cb7-30" tabindex="-1"></a>stands_to_plot <span class="ot">&lt;-</span> utils<span class="sc">::</span><span class="fu">head</span>(test_df<span class="sc">$</span>inventory_id, <span class="dv">4</span>)</span>
+<span id="cb7-31"><a href="#cb7-31" tabindex="-1"></a></span>
+<span id="cb7-32"><a href="#cb7-32" tabindex="-1"></a><span class="co"># Run the detailed visualization and analysis function</span></span>
+<span id="cb7-33"><a href="#cb7-33" tabindex="-1"></a>viz_output <span class="ot">&lt;-</span> <span class="fu">analyze_and_visualize_predictions</span>(</span>
+<span id="cb7-34"><a href="#cb7-34" tabindex="-1"></a>  <span class="at">test_data_with_predictions =</span> test_data_with_preds,</span>
+<span id="cb7-35"><a href="#cb7-35" tabindex="-1"></a>  <span class="at">target_features =</span> target_features,</span>
+<span id="cb7-36"><a href="#cb7-36" tabindex="-1"></a>  <span class="at">selected_stands =</span> stands_to_plot,</span>
+<span id="cb7-37"><a href="#cb7-37" tabindex="-1"></a>  <span class="at">stand_id_col =</span> <span class="st">&quot;inventory_id&quot;</span></span>
+<span id="cb7-38"><a href="#cb7-38" tabindex="-1"></a>)</span>
+<span id="cb7-39"><a href="#cb7-39" tabindex="-1"></a></span>
+<span id="cb7-40"><a href="#cb7-40" tabindex="-1"></a><span class="co"># Print the generated scatterplot (target feature level) and histogram (target across instance level)</span></span>
+<span id="cb7-41"><a href="#cb7-41" tabindex="-1"></a><span class="co">#print(viz_output$plots$scatterplot)</span></span>
+<span id="cb7-42"><a href="#cb7-42" tabindex="-1"></a><span class="co">#print(viz_output$plots$histogram)</span></span></code></pre></div>
+</div>
+</div>
+<div id="part-3-an-advanced-workflow-assessing-model-parsimony" class="section level2">
+<h2><strong>Part 3: An Advanced Workflow – Assessing Model
+Parsimony</strong></h2>
+<p>This part demonstrates how to systematically test for model
+parsimony. The goal is to determine if a model with fewer input features
+can perform comparably to a more complex one. This is achieved by
+retraining new models from scratch using only subsets of the original
+features.</p>
+<div id="automated-retraining-on-feature-subsets" class="section level3">
+<h3>1. Automated Retraining on Feature Subsets</h3>
+<p>The <code>run_feature_set_sensitivity_training</code> function
+automates the process. It takes a list of feature subsets and a model
+configuration “recipe,” then trains a new model for each subset. For
+this workflow, we use a recipe (<code>nn_config_builtin</code>) that
+defines the same architecture as the pre-trained benchmark model,
+ensuring a fair comparison.</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="co"># This configuration is a RECIPE to build new models that replicate the</span></span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a><span class="co"># architecture from the original manuscript. It is NOT used to load a file.</span></span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a>nn_config_builtin <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a>  <span class="at">architecture =</span> <span class="st">&quot;manuscript_model_v3&quot;</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a>  <span class="at">build_params =</span> <span class="fu">list</span>(<span class="at">lambda1 =</span> <span class="fl">1e-5</span>, <span class="at">lambda2 =</span> <span class="fl">1e-5</span>, <span class="at">activation =</span> <span class="st">&quot;relu&quot;</span>),</span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a>  <span class="at">fit_params =</span> <span class="fu">list</span>(<span class="at">epochs =</span> <span class="dv">10</span>, <span class="at">batch_size =</span> <span class="dv">16</span>),</span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a>  <span class="at">loss =</span> <span class="st">&quot;kl_divergence&quot;</span>,</span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">42</span></span>
+<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a>)</span>
+<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a></span>
+<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a><span class="co"># Define the feature sets to test, based on our PFI results from Part 1</span></span>
+<span id="cb8-12"><a href="#cb8-12" tabindex="-1"></a>feature_sets_list <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb8-13"><a href="#cb8-13" tabindex="-1"></a>  <span class="at">Top2_Features =</span> <span class="fu">head</span>(pfi_output<span class="sc">$</span>results<span class="sc">$</span>Feature, <span class="dv">2</span>),</span>
+<span id="cb8-14"><a href="#cb8-14" tabindex="-1"></a>  <span class="at">Top4_Features =</span> <span class="fu">head</span>(pfi_output<span class="sc">$</span>results<span class="sc">$</span>Feature, <span class="dv">4</span>),</span>
+<span id="cb8-15"><a href="#cb8-15" tabindex="-1"></a>  <span class="at">Top8_Features =</span> <span class="fu">head</span>(pfi_output<span class="sc">$</span>results<span class="sc">$</span>Feature, <span class="dv">8</span>)</span>
+<span id="cb8-16"><a href="#cb8-16" tabindex="-1"></a>)</span>
+<span id="cb8-17"><a href="#cb8-17" tabindex="-1"></a></span>
+<span id="cb8-18"><a href="#cb8-18" tabindex="-1"></a><span class="co"># Define where to save the results</span></span>
+<span id="cb8-19"><a href="#cb8-19" tabindex="-1"></a>fs_training_results_path <span class="ot">&lt;-</span> <span class="fu">file.path</span>(temp_dir, <span class="st">&quot;fs_training_results.RData&quot;</span>)</span>
+<span id="cb8-20"><a href="#cb8-20" tabindex="-1"></a></span>
+<span id="cb8-21"><a href="#cb8-21" tabindex="-1"></a><span class="co"># Run the automated training workflow. Note: This is computationally intensive. </span></span>
+<span id="cb8-22"><a href="#cb8-22" tabindex="-1"></a><span class="co"># The function does not return a large object directly into your R environment.</span></span>
+<span id="cb8-23"><a href="#cb8-23" tabindex="-1"></a><span class="co"># This is a deliberate design choice for robustness. Training multiple neural networks </span></span>
+<span id="cb8-24"><a href="#cb8-24" tabindex="-1"></a><span class="co"># can be a very long and memory-intensive process: your work is save, memory is managed, the workflow is modular.</span></span>
+<span id="cb8-25"><a href="#cb8-25" tabindex="-1"></a><span class="fu">run_feature_set_sensitivity_training</span>(</span>
+<span id="cb8-26"><a href="#cb8-26" tabindex="-1"></a>  <span class="at">model_data_name =</span> <span class="st">&quot;deepReveal_example_data&quot;</span>,</span>
+<span id="cb8-27"><a href="#cb8-27" tabindex="-1"></a>  <span class="at">model_data_path =</span> model_data_path,</span>
+<span id="cb8-28"><a href="#cb8-28" tabindex="-1"></a>  <span class="at">feature_sets_list =</span> feature_sets_list,</span>
+<span id="cb8-29"><a href="#cb8-29" tabindex="-1"></a>  <span class="at">compile_fit_predict_nn_func =</span> compile_fit_predict_nn,</span>
+<span id="cb8-30"><a href="#cb8-30" tabindex="-1"></a>  <span class="at">nn_config =</span> nn_config_builtin,</span>
+<span id="cb8-31"><a href="#cb8-31" tabindex="-1"></a>  <span class="at">output_rdata_path =</span> fs_training_results_path,</span>
+<span id="cb8-32"><a href="#cb8-32" tabindex="-1"></a>  <span class="at">save_trained_models_path =</span> <span class="fu">file.path</span>(temp_dir, <span class="st">&quot;fs_models&quot;</span>)</span>
+<span id="cb8-33"><a href="#cb8-33" tabindex="-1"></a>)</span></code></pre></div>
+</div>
+<div id="visualizing-feature-set-sensitivity" class="section level3">
+<h3>2. Visualizing Feature Set Sensitivity</h3>
+<p>The final step is to visualize the performance of all the retrained
+models. The <code>plot_feature_set_val_loss_heatmap</code> function
+creates a powerful summary that makes it easy to see how performance
+(measured by minimum validation loss) changes as features are added or
+removed, allowing you to identify the most effective and parsimonious
+feature set at a glance.</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a><span class="co"># This code visualizes the results from the .RData file generated above.</span></span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a>heatmap_output <span class="ot">&lt;-</span> <span class="fu">plot_feature_set_val_loss_heatmap</span>(</span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a>  <span class="at">sensitivity_results_rdata_path =</span> fs_training_results_path,</span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a>  <span class="at">importance_results =</span> pfi_output<span class="sc">$</span>results, <span class="co"># Use PFI results from Part 1 for ordering</span></span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a>  <span class="at">plot_filename =</span> <span class="st">&quot;feature_set_heatmap.pdf&quot;</span>,</span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a>  <span class="at">plot_save_path =</span> temp_dir,</span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>  <span class="at">plot_title =</span> <span class="st">&quot;Model Performance Across Feature Subsets&quot;</span></span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a>)</span>
+<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a></span>
+<span id="cb9-10"><a href="#cb9-10" tabindex="-1"></a><span class="co">#print(heatmap_output$plot)</span></span></code></pre></div>
+</div>
+<div id="detailed-analysis-of-parsimonious-models" class="section level3">
+<h3>3. Detailed Analysis of Parsimonious Models</h3>
+<p>After identifying promising, simpler models from the heatmap, you
+will want to perform the same detailed diagnostic analysis on them as
+you did for the original benchmark model. The
+<code>generate_feature_set_prediction_plots</code> function automates
+this. It takes the results from the sensitivity training and, for each
+retrained model (e.g., for the “Top4_Features” model), it generates a
+full set of diagnostic plots and statistics.</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="co"># This function creates a new subdirectory for each feature set,</span></span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="co"># containing detailed prediction plots and statistics.</span></span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a><span class="co"># Define a base path for the output plots</span></span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a>detailed_plots_path <span class="ot">&lt;-</span> <span class="fu">file.path</span>(temp_dir, <span class="st">&quot;detailed_feature_set_plots&quot;</span>)</span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a></span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="co"># Run the plot generation function</span></span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a>all_set_stats <span class="ot">&lt;-</span> <span class="fu">generate_feature_set_prediction_plots</span>(</span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a>  <span class="at">sensitivity_results_rdata_path =</span> fs_training_results_path,</span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a>  <span class="at">analyze_and_visualize_predictions_func =</span> analyze_and_visualize_predictions,</span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a>  <span class="at">plot_save_path_base =</span> detailed_plots_path,</span>
+<span id="cb10-12"><a href="#cb10-12" tabindex="-1"></a>  <span class="at">stand_id_col =</span> <span class="st">&quot;inventory_ids&quot;</span>,</span>
+<span id="cb10-13"><a href="#cb10-13" tabindex="-1"></a>  <span class="at">num_stands_for_histograms =</span> <span class="dv">4</span></span>
+<span id="cb10-14"><a href="#cb10-14" tabindex="-1"></a>)</span>
+<span id="cb10-15"><a href="#cb10-15" tabindex="-1"></a></span>
+<span id="cb10-16"><a href="#cb10-16" tabindex="-1"></a></span>
+<span id="cb10-17"><a href="#cb10-17" tabindex="-1"></a><span class="co"># The function saves all plots to disk. You can inspect the `all_set_stats`</span></span>
+<span id="cb10-18"><a href="#cb10-18" tabindex="-1"></a><span class="co"># object to see the aggregated statistics for each model.</span></span>
+<span id="cb10-19"><a href="#cb10-19" tabindex="-1"></a><span class="fu">head</span>(all_set_stats<span class="sc">$</span>Top4_Features<span class="sc">$</span>class_stats)</span>
+<span id="cb10-20"><a href="#cb10-20" tabindex="-1"></a><span class="fu">print</span>(all_set_stats<span class="sc">$</span>Top2_Features<span class="sc">$</span>plots<span class="sc">$</span>scatterplot)</span>
+<span id="cb10-21"><a href="#cb10-21" tabindex="-1"></a><span class="fu">print</span>(all_set_stats<span class="sc">$</span>Top2_Features<span class="sc">$</span>plots<span class="sc">$</span>histogram)</span></code></pre></div>
+</div>
+</div>
+<div id="conclusion" class="section level2">
+<h2>3. Conclusion</h2>
+<p>This vignette has guided you through the primary workflows of the
+<code>deepReveal</code> package, demonstrating how to move from a “black
+box” neural network to an interpretable tool for scientific inquiry. You
+have learned how to:</p>
+<ul>
+<li><p>Analyze a pre-trained model to identify its key drivers using
+permutation feature importance (run-pfi).</p></li>
+<li><p>Explore the model’s learned functional relationships using
+feature value sensitivity analysis (run-fvs).</p></li>
+<li><p>Define, train, and evaluate a custom neural network from scratch
+using the package’s core training and visualization functions
+(define-and-train-custom-model, visualize-custom-model).</p></li>
+<li><p>Systematically assess model parsimony by automatically retraining
+and comparing models with different feature subsets (run-fs-training,
+plot-heatmap).</p></li>
+</ul>
+<p>By following these steps, you can gain a much deeper understanding of
+your model’s behavior, build confidence in its predictions, and produce
+robust, interpretable results.</p>
+<p><em>A Note on Temporary Files :</em> Throughout this tutorial, all
+outputs (plots, data files, and saved models) were saved to a temporary
+directory created by the <code>tempdir()</code> function. This directory
+is specific to your current R session. When you close R or RStudio, this
+directory and all of its contents will be deleted automatically,
+ensuring your system remains clean.</p>
+<p>Happy modeling!</p>
+<p>Ulrike</p>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

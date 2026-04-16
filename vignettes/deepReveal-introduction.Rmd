@@ -2,7 +2,7 @@
 title: "Using deepReveal: A User Guide to Neural Network Sensitivity Analysis"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{deepReveal Tutorial: From Black Box to Insight}
+  %\VignetteIndexEntry{Using deepReveal: A User Guide to Neural Network Sensitivity Analysis}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -54,20 +54,22 @@ data("deepReveal_example_data")
 model_data_path <- file.path(temp_dir, "deepReveal_example_data.RData")
 save(deepReveal_example_data, file = model_data_path)
 
-# Step 1: Get the full, absolute file path to the model inside the package.
+# Get the full, absolute file path to the model inside the package.
 # The system.file() function is the standard R way to do this.
 model_path <- system.file("extdata", "deepReveal_example_model.keras",
                           package = "deepReveal")
-# You can print the path to see what it looks like on your machine
-#print(model_path)
+```
 
-# Step 2: Load the model from that path using the keras load_model() function.
-# This is where the model is actually read from the file and loaded into memory.
+```{r load-model, eval=FALSE}
+# Note: Loading the model requires a working Python/TensorFlow environment
+# with either the 'keras' or 'keras3' R package installed.
+# Install with: keras3::install_keras() or tensorflow::install_tensorflow()
+#
+# Once set up, load the model as follows:
 loaded_model <- keras3::load_model(model_path)
 
-# Now you can use the model
-#summary(loaded_model)
-
+# Inspect the model architecture:
+# summary(loaded_model)
 ```
 
 

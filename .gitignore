@@ -23,6 +23,9 @@ deepReveal.pdf
 vignettes/*.html
 vignettes/*.R
 doc/
+# inst/doc/ contains the pre-built vignette and must be committed for R CMD check
+!inst/doc/
+!inst/doc/**
 
 # devtools and usethis files
 .Rbuildignore
