@@ -16,6 +16,7 @@ affiliations:
     index: 1
 date: 16 April 2026
 bibliography: paper.bib
+repository: "https://github.com/uhiltner/deepReveal"
 ---
 
 # Summary
@@ -28,7 +29,7 @@ Neural networks (NNs) are increasingly adopted in ecological and environmental s
 
 Existing R packages for model interpretability — such as `iml` [@molnar2018iml], `DALEX` [@biecek2018dalex], and `vip` [@greenwell2020vip] — are primarily designed for tabular prediction models with scalar outputs (e.g., a single predicted value or class). They do not natively support models with multivariate, distributional outputs, which are common in ecological applications where the prediction target is itself a distribution, such as a stem size distribution (SSD), a species abundance distribution, or a size-class frequency.
 
-`deepReveal` was developed to fill this gap. Its core metric is the Kullback-Leibler (KL) divergence [@kullback1951information], an information-theoretic measure that is appropriate for comparing probability distributions — the natural output type of many ecological NNs. This makes `deepReveal` specifically suited to ecological and environmental modeling contexts where the model output is a vector of probability or density values rather than a single scalar.
+`deepReveal` was developed to fill this gap. Its core metric is the Kullback-Leibler (KL) divergence [@kullback1951information], an information-theoretic measure that is appropriate for comparing probability distributions — the natural output type of many ecological NNs. This makes `deepReveal` specifically suited to ecological and environmental modeling contexts where the model output is a vector of relative frequencies or probability densities rather than a single scalar.
 
 Furthermore, `deepReveal` is built around the Keras/TensorFlow ecosystem via the `keras` and `keras3` R packages, and natively handles the complexities of loading models with custom loss functions — a common requirement in applied research.
 
@@ -52,14 +53,14 @@ The package provides the following core functions:
 - `plot_feature_set_val_loss_heatmap()`: Visualizes validation loss across all tested feature subsets as an annotated heatmap.
 - `generate_feature_set_prediction_plots()`: Generates detailed prediction diagnostic plots for each feature subset model.
 
-The package includes fully anonymized example data (`deepReveal_example_data`) and a pre-trained example Keras model derived from the Swiss Experimental Forest Management (EFM) network [@brang2011efm], enabling users to reproduce all workflows without access to proprietary data.
+The package includes fully anonymized example data (`deepReveal_example_data`) and a pre-trained example Keras model derived from the Swiss Experimental Forest Management (EFM) network [@forrester2019efm; @forrester2021efm], enabling users to reproduce all workflows without access to proprietary data.
 
 # Application
 
-`deepReveal` was developed as the analytical backbone of Hiltner et al. (in preparation), a study that predicts detailed forest stem size distributions from aggregated inventory data using a deep neural network. In that work, `deepReveal` was used to: (1) identify which stand structural and environmental variables were the primary drivers of SSD predictions; (2) demonstrate that the model learned ecologically plausible non-linear relationships between structure and size distribution; and (3) show that a parsimonious 9-feature "Forester's Field Set" achieved comparable predictive performance to a 37-feature full model.
+`deepReveal` was developed as the analytical backbone of @hiltner2026bridging, a study that predicts detailed forest stem size distributions from aggregated inventory data using a deep neural network. In that work, `deepReveal` was used to: (1) identify which stand structural and environmental variables were the primary drivers of stem size distribution predictions; (2) demonstrate that the neural network learned ecologically plausible, non-linear relationships between forest structure and size distribution; and (3) systematically compare feature sets to show that a parsimonious 9-feature Forester Field Set achieved superior predictive performance ($R^2 = 0.95$) compared to a 37-feature comprehensive benchmark model by effectively filtering out ecological noise.
 
 # Acknowledgements
 
-The author thanks Jonas Glatthorn and Harald Bugmann (ETH Zurich) for scientific guidance throughout this work. This research was funded by the Swiss National Science Foundation (NCCS Hydro-CH2018 project).
+The author thanks Jonas Glatthorn and Harald Bugmann (ETH Zurich) for scientific guidance throughout this work. This research was funded by the Swiss National Center for Climate Services (NCCS) via the Federal Office of Meteorology and Climatology MeteoSwiss through the project "NCCS-Impacts" under contract no. 126002225.
 
 # References
