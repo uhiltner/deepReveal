@@ -1,36 +1,37 @@
 # This file specifies how to cite the deepReveal package and related work.
 
 # Citation for the R package itself
-citEntry(entry = "Manual",
-  title        = "deepReveal: A Framework for Sensitivity Analysis of Ecological Neural Networks",
-  author       = personList(
-                   person("Ulrike", "Hiltner",
-                          role = c("aut", "cre"),
-                          comment = c(ORCID = "0000-0001-5663-7068"))
-                 ),
-  year         = "2025", # Or the current year of release
-  note         = "R package version 0.1.0", # Or the current version
-
+bibentry(
+  bibtype      = "Manual",
+  title        = "deepReveal: A Framework for Sensitivity Analysis of Neural Networks",
+  author       = person("Ulrike", "Hiltner",
+                        role = c("aut", "cre"),
+                        comment = c(ORCID = "0000-0001-5663-7068"),
+                        email = "ulrike.hiltner@usys.ethz.ch"),
+  year         = "2026",
+  note         = "R package version 0.1.0. https://github.com/uhiltner/deepReveal",
+  url          = "https://github.com/uhiltner/deepReveal",
   textVersion  =
-  paste("Hiltner, U. (2025).",
-        "deepReveal: A Framework for Sensitivity Analysis of Ecological Neural Networks.",
-        "R package version 0.1.0.")
+  paste("Hiltner, U. (2026).",
+        "deepReveal: A Framework for Sensitivity Analysis of Neural Networks.",
+        "R package version 0.1.0.",
+        "https://github.com/uhiltner/deepReveal")
 )
 
 # Citation for the related scientific article
-citEntry(entry = "Article",
+bibentry(
+  bibtype      = "Article",
   title        = "Bridging data gaps in forestry: Neural Network prediction of stem size distributions from aggregated inventories",
-  author       = personList(
+  author       = c(
                    person("Ulrike", "Hiltner"),
                    person("Jonas", "Glatthorn"),
                    person("Harald", "Bugmann")
                  ),
-  journal      = "Journal TBD",
+  journal      = "Journal of Applied Ecology",
   year         = "in preparation",
-  note         = "Manuscript in preparation for submission.",
-
+  note         = "Manuscript in preparation.",
   textVersion  =
   paste("Hiltner, U., Glatthorn, J., and Bugmann, H. (in preparation).",
         "Bridging data gaps in forestry: Neural Network prediction of stem size distributions from aggregated inventories.",
-        "Journal TBD.")
+        "Journal of Applied Ecology.")
 )
