@@ -1,5 +1,7 @@
 # deepReveal R Package
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19607469.svg)](https://doi.org/10.5281/zenodo.19607469)
+
 `deepReveal` is an R package for conducting comprehensive sensitivity analyses on Keras-based neural network models. It provides a flexible framework to move from a "black box" model to an interpretable tool for scientific inquiry, allowing researchers to build trust and gain deeper insights from their models.
 
 Neural networks are powerful tools, but their complexity can make them difficult to interpret. `deepReveal` is designed to address this challenge by providing a systematic workflow to answer critical modeling questions:
