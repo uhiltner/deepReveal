@@ -42,3 +42,6 @@ pkgdown/
 .claude/
 docs/adr/
 
+# Development utility scripts — not part of the public package
+anonymize_model_data.R
+
