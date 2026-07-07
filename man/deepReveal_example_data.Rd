@@ -12,8 +12,8 @@ A list named `deepReveal_example_data` with 7 elements:
   \item{val_data}{A data frame with the validation subset.}
   \item{test_data}{A data frame with the test subset.}
   \item{input_features}{A character vector listing the 37 predictor variable names.}
-  \item{target_features}{A character vector listing the 11 target variable names
-    (SSD classes).}
+  \item{target_features}{A character vector listing the 10 target variable names
+    (SSD DBH classes from 8 cm to >50 cm).}
   \item{top_seed}{An integer representing the random seed used for the benchmark
     model training, ensuring reproducibility.}
   \item{top_model_predictions}{A data frame containing the benchmark model's

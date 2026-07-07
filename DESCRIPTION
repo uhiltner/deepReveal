@@ -1,6 +1,6 @@
 Package: deepReveal
 Title: A Framework for Sensitivity Analysis of Neural Networks
-Version: 0.1.0
+Version: 0.1.0.9000
 Date: 2026-04-16
 Authors@R: person("Ulrike", "Hiltner", email = "ulrike.hiltner@usys.ethz.ch", role = c("aut", "cre"),
               comment = c(ORCID = "0000-0001-5663-7068"))
@@ -13,9 +13,10 @@ Description: Provides a suite of tools to conduct comprehensive sensitivity anal
 License: GPL-3 + file LICENSE
 Encoding: UTF-8
 LazyData: true
-Imports: 
+Imports:
     cowplot,
     dplyr,
+    tibble,
     entropy,
     ggplot2,
     magrittr,
@@ -36,4 +37,4 @@ Suggests:
 VignetteBuilder: knitr
 Depends: 
     R (>= 2.10)
-RoxygenNote: 7.3.1
+Config/roxygen2/version: 8.0.0

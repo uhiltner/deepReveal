@@ -1865,3 +1865,671 @@ kl_divergence_metric <- function(true_y, pred_y, smoothing_value = 1e-9) {
 
   return(mean_kl)
 }
+
+
+# =============================================================================
+# SECTION 6: SSD STRUCTURAL ANALYSIS AND PREDICTION QUALITY
+# =============================================================================
+
+# 6a ---- Divergence helpers --------------------------------------------------
+
+#' KL divergence between two distributions in nats (internal)
+#'
+#' @description Computes KL(true || pred) in nats. Both inputs are
+#'   renormalised internally, so absolute stem counts or relative proportions
+#'   are both accepted. Additive smoothing prevents log(0) at empty classes.
+#' @param true_dist Numeric vector. Reference distribution.
+#' @param pred_dist Numeric vector. Predicted distribution, same length.
+#' @param eps Numeric. Smoothing constant. Default `1e-9`.
+#' @return Numeric scalar: KL divergence in nats.
+#' @keywords internal
+kl_divergence_nats_ <- function(true_dist, pred_dist, eps = 1e-9) {
+  p <- true_dist + eps
+  p <- p / sum(p)
+  q <- pred_dist + eps
+  q <- q / sum(q)
+  sum(p * log(p / q))
+}
+
+
+#' Jensen-Shannon divergence between two stem size distributions
+#'
+#' @description Symmetric, bounded companion metric to [kl_divergence_metric()]
+#'   for pairwise SSD comparisons. JSD is bounded in `[0, ln(2)]`
+#'   (\eqn{\approx 0.693} nats) regardless of distribution distance, making it
+#'   more robust than unbounded KL when comparing predicted and observed stem
+#'   size distributions across stands with extreme structural differences.
+#'   Both inputs are renormalised internally, so absolute stem counts or
+#'   relative proportions are both accepted.
+#' @param true_dist Numeric vector. Reference stem size distribution.
+#' @param pred_dist Numeric vector. Predicted stem size distribution, same
+#'   length and DBH-class order as `true_dist`.
+#' @param eps Numeric. Additive smoothing constant applied before
+#'   renormalising. Default `1e-9`.
+#' @return Numeric scalar: Jensen-Shannon divergence in nats,
+#'   bounded `[0, ln(2)]`.
+#' @seealso [kl_divergence_metric()] for the row-wise KL metric used in model
+#'   training; [compute_prediction_metrics()] for the full per-stand metric
+#'   suite.
+#' @examples
+#' jsd_divergence(c(400, 200, 100, 50, 20, 10, 5, 2, 1, 0),
+#'                c(380, 210, 110, 45, 22, 12,  4, 3, 1, 0))
+#' @export
+jsd_divergence <- function(true_dist, pred_dist, eps = 1e-9) {
+  p <- true_dist + eps
+  p <- p / sum(p)
+  q <- pred_dist + eps
+  q <- q / sum(q)
+  m <- 0.5 * (p + q)
+  0.5 * sum(p * log(p / m)) + 0.5 * sum(q * log(q / m))
+}
+
+
+# 6b ---- SSD structural classification --------------------------------------
+
+#' Moving-average smoother for relative SSD vectors (internal)
+#'
+#' @description 3-point symmetric moving average to suppress sampling noise
+#'   before peak detection. Boundary bins use a 2-point average. Matches the
+#'   smoothing step documented in Appendix S4.2.
+#' @param x Numeric vector. Relative SSD (sums to 1). Length >= 2.
+#' @return Numeric vector, same length as `x`.
+#' @keywords internal
+smooth_ssd_ <- function(x) {
+  n <- length(x)
+  s <- numeric(n)
+  s[1] <- (x[1] + x[2]) / 2
+  for (i in 2:(n - 1)) s[i] <- (x[i - 1] + x[i] + x[i + 1]) / 3
+  s[n] <- (x[n - 1] + x[n]) / 2
+  s
+}
+
+
+#' Local-maxima detector for smoothed SSD vectors (internal)
+#'
+#' @description Returns 1-indexed positions of all local maxima. Position `i`
+#'   is a maximum if it strictly exceeds both neighbours; boundary positions
+#'   are maxima if they exceed their single available neighbour.
+#' @param s Numeric vector. Typically the output of [smooth_ssd_()].
+#' @return Integer vector of peak positions. `integer(0)` if no peaks.
+#' @keywords internal
+find_ssd_peaks_ <- function(s) {
+  n <- length(s)
+  is_peak <- logical(n)
+  is_peak[1] <- s[1] > s[2]
+  for (i in 2:(n - 1)) is_peak[i] <- s[i] > s[i - 1] && s[i] > s[i + 1]
+  is_peak[n] <- s[n] > s[n - 1]
+  which(is_peak)
+}
+
+
+#' Classify an SSD into a 4-class structural archetype
+#'
+#' @description Classifies a stem size distribution into one of four
+#'   ecologically distinct structural archetypes using a priority-ordered
+#'   decision algorithm:
+#'   \enumerate{
+#'     \item \strong{Irregular} — stand is sparse (< `sparse_limit` stems/ha),
+#'       the smallest DBH class holds > `class1_dom_limit` of stems, or no
+#'       local maximum is detectable in the smoothed SSD.
+#'     \item \strong{Reverse-J} — dominant peak at DBH class 1 AND Spearman
+#'       rank correlation across all classes is < -0.80, confirming a strong
+#'       monotone decline.
+#'     \item \strong{Bimodal} — two or more local peaks exist and the secondary
+#'       peak is at least `threshold_secondary` of the primary peak height,
+#'       indicating a multi-cohort structure.
+#'     \item \strong{Unimodal} — single dominant peak; none of the above.
+#'   }
+#'   Algorithm and thresholds match Appendix S4.2 (Hiltner et al., in review).
+#'   Default thresholds were calibrated on 10-class SSD vectors (DBH >= 8 cm);
+#'   recalibration is recommended for substantially different class counts.
+#' @param ssd_abs Numeric vector. Absolute stem counts per DBH class
+#'   (stems/ha or any positive scale; NA values are treated as 0).
+#' @param stem_number Numeric scalar. Total stand stem density, used for the
+#'   sparse-stand check.
+#' @param threshold_secondary Numeric. Minimum secondary-to-primary peak
+#'   height ratio for a Bimodal classification. Default `0.15`.
+#' @param sparse_limit Numeric. Stands below this stem density are classified
+#'   Irregular. Default `50`.
+#' @param class1_dom_limit Numeric. Stands where the first DBH class holds
+#'   more than this fraction of total stems are classified Irregular. Default
+#'   `0.90`.
+#' @return Named list with components:
+#'   \describe{
+#'     \item{category}{Character. One of "Irregular", "Reverse-J", "Bimodal",
+#'       "Unimodal".}
+#'     \item{n_peaks}{Integer. Number of local maxima detected (NA if
+#'       Irregular due to sparsity).}
+#'     \item{spearman_rho}{Numeric. Spearman rank correlation of stem counts
+#'       vs DBH class index across all classes (NA if Irregular or Bimodal).}
+#'     \item{class1_prop}{Numeric. Proportion of stems in the first DBH class.}
+#'     \item{secondary_peak_ratio}{Numeric. Height ratio of secondary to
+#'       primary smoothed peak (0 if fewer than 2 peaks; NA if Irregular).}
+#'   }
+#' @importFrom stats cor
+#' @examples
+#' # Reverse-J stand: most stems in the smallest class, declining monotonically
+#' classify_ssd(c(400, 200, 100, 50, 20, 10, 5, 2, 1, 0), stem_number = 788)
+#'
+#' # Bimodal stand: two distinct cohorts
+#' classify_ssd(c(50, 30, 10, 5, 20, 60, 40, 15, 5, 2), stem_number = 237)
+#' @export
+classify_ssd <- function(ssd_abs,
+                          stem_number,
+                          threshold_secondary = 0.15,
+                          sparse_limit        = 50,
+                          class1_dom_limit    = 0.90) {
+  empty <- list(category = "Irregular", n_peaks = NA_integer_,
+                spearman_rho = NA_real_, class1_prop = NA_real_,
+                secondary_peak_ratio = NA_real_)
+
+  ssd_abs[is.na(ssd_abs)] <- 0
+  total <- sum(ssd_abs)
+
+  if (is.na(stem_number) || stem_number < sparse_limit || total < 1) return(empty)
+
+  rel         <- ssd_abs / total
+  class1_prop <- rel[1]
+
+  if (class1_prop > class1_dom_limit) {
+    return(list(category = "Irregular", n_peaks = 1L,
+                spearman_rho = NA_real_, class1_prop = class1_prop,
+                secondary_peak_ratio = NA_real_))
+  }
+
+  s     <- smooth_ssd_(rel)
+  peaks <- find_ssd_peaks_(s)
+  n_p   <- length(peaks)
+
+  if (n_p == 0) {
+    return(list(category = "Irregular", n_peaks = 0L,
+                spearman_rho = NA_real_, class1_prop = class1_prop,
+                secondary_peak_ratio = 0))
+  }
+
+  peak_heights <- sort(s[peaks], decreasing = TRUE)
+  sec_ratio    <- if (n_p >= 2) peak_heights[2] / peak_heights[1] else 0
+
+  if (n_p >= 2 && sec_ratio >= threshold_secondary) {
+    return(list(category = "Bimodal", n_peaks = n_p,
+                spearman_rho = NA_real_, class1_prop = class1_prop,
+                secondary_peak_ratio = sec_ratio))
+  }
+
+  dominant_pos <- peaks[which.max(s[peaks])]
+  rho          <- cor(seq_along(rel), rel, method = "spearman")
+
+  if (dominant_pos == 1L && !is.na(rho) && rho < -0.80) {
+    return(list(category = "Reverse-J", n_peaks = 1L,
+                spearman_rho = rho, class1_prop = class1_prop,
+                secondary_peak_ratio = sec_ratio))
+  }
+
+  list(category = "Unimodal", n_peaks = 1L,
+       spearman_rho = rho, class1_prop = class1_prop,
+       secondary_peak_ratio = sec_ratio)
+}
+
+
+# 6c ---- Stand-level utilities -----------------------------------------------
+
+#' Quadratic mean diameter from stem density and basal area
+#'
+#' @description Computes the quadratic mean diameter dG (cm) using the
+#'   identity \eqn{BA = (\pi/4)(dG/100)^2 \cdot N}, rearranged to
+#'   \eqn{dG = \sqrt{4 \cdot BA / (\pi \cdot N)} \times 100}. dG is the
+#'   representative diameter that links stem density and basal area, and
+#'   anchors the Weibull scale parameter in forward SSD generation.
+#' @param N_target Numeric scalar. Stem density (stems/ha, > 0).
+#' @param BA_target Numeric scalar. Basal area (m\eqn{^2}/ha, > 0).
+#' @return Numeric scalar. Quadratic mean diameter dG (cm).
+#' @seealso [stand_basal_area()] for the inverse calculation.
+#' @examples
+#' stand_qmd(N_target = 600, BA_target = 30)
+#' @export
+stand_qmd <- function(N_target, BA_target) {
+  sqrt(4 * BA_target / (pi * N_target)) * 100
+}
+
+
+#' Basal area from a discretized stem size distribution
+#'
+#' @description Computes total stand basal area from a stem count vector and
+#'   class representative diameters. Applies the individual-tree basal area
+#'   formula \eqn{a_i = (\pi/4)(d_i/100)^2} to each class and sums.
+#' @param counts Numeric vector. Stems/ha per DBH class.
+#' @param midpoints_cm Numeric vector. Class representative diameters (cm),
+#'   same length as `counts`. Default: [SG_DBH_MIDPOINTS].
+#' @return Numeric scalar. Total basal area (m\eqn{^2}/ha).
+#' @seealso [stand_qmd()] for deriving dG from N and BA.
+#' @examples
+#' stand_basal_area(c(200, 150, 100, 80, 50, 20, 10, 5, 2, 1))
+#' @export
+stand_basal_area <- function(counts, midpoints_cm = SG_DBH_MIDPOINTS) {
+  sum((pi / 4) * (midpoints_cm / 100)^2 * counts)
+}
+
+
+# 6d ---- SSD generator helpers (internal) ------------------------------------
+
+#' Siipilehto (1999) Weibull scale recovery (internal)
+#'
+#' @description Recovers the Weibull scale parameter b from the basal-area
+#'   median diameter and a fixed shape, using the 50th-percentile identity:
+#'   b = d_gM / (-ln(0.5))^(1/c). In forward SSD generation, d_gM is
+#'   approximated by dG from [stand_qmd()].
+#' @param d_gM Numeric. Basal-area median diameter (cm).
+#' @param c_shape Numeric. Weibull shape parameter (> 0).
+#' @return Numeric scalar. Weibull scale parameter b (cm).
+#' @references Siipilehto (1999) Silva Fennica, Eq. 9.
+#' @keywords internal
+siipilehto_scale_ <- function(d_gM, c_shape) {
+  d_gM / ((-log(0.5))^(1 / c_shape))
+}
+
+
+#' Shifted Weibull class probabilities (internal)
+#'
+#' @description Evaluates a location-shifted two-parameter Weibull over fixed
+#'   DBH class breaks and returns class probabilities summing to 1. The
+#'   location parameter theta shifts the distribution to start at the minimum
+#'   measurable DBH, consistent with the diameter-distribution literature
+#'   (Siipilehto 1999).
+#' @param b_scale Numeric. Weibull scale (cm), from [siipilehto_scale_()].
+#' @param c_shape Numeric. Weibull shape (> 0).
+#' @param theta Numeric. Location = minimum DBH (cm). Default: [SG_DBH_THETA].
+#' @param breaks_cm Numeric vector. Class break points (cm).
+#'   Default: [SG_DBH_BREAKS].
+#' @return Numeric vector of class probabilities summing to 1.
+#' @importFrom stats pweibull
+#' @keywords internal
+weibull_class_probs_ <- function(b_scale, c_shape,
+                                  theta     = SG_DBH_THETA,
+                                  breaks_cm = SG_DBH_BREAKS) {
+  L <- breaks_cm[-length(breaks_cm)]
+  U <- breaks_cm[-1L]
+
+  Fshift <- function(d) {
+    ifelse(is.infinite(d), 1,
+           ifelse(d <= theta, 0,
+                  pweibull(d - theta, shape = c_shape, scale = b_scale)))
+  }
+
+  p <- Fshift(U) - Fshift(L)
+  p[p < 0] <- 0
+  total <- sum(p)
+  if (total <= 0) stop(sprintf(
+    "weibull_class_probs_: all-zero probabilities. b_scale=%.2f, c_shape=%.2f",
+    b_scale, c_shape))
+  p / total
+}
+
+
+#' De Liocourt geometric seed counts (internal)
+#'
+#' @description Constructs a reverse-J seed stand table using the de Liocourt
+#'   q-ratio: the number of stems in class i equals q times the stems in class
+#'   i+1; N_target is distributed as a geometric series anchored so the total
+#'   exactly equals N_target.
+#' @param N_target Numeric. Total stems/ha.
+#' @param q Numeric. De Liocourt q-ratio (> 1).
+#' @param n_classes Integer. Number of DBH classes. Default: 10.
+#' @return Numeric vector of stems/ha per class (index 1 = smallest class).
+#' @references Murphy & Farrar (1982) Forest Science.
+#' @keywords internal
+deliocourt_seeds_ <- function(N_target, q, n_classes = 10L) {
+  if (q <= 1) stop("deliocourt_seeds_: q must be > 1.")
+  exponents <- 0:(n_classes - 1L)
+  denom     <- sum(q^(-exponents))
+  N1        <- N_target / denom
+  N1 * q^(-exponents)
+}
+
+
+#' Cao-Baldwin constrained least-squares stand table adjustment (internal)
+#'
+#' @description Adjusts a seed count vector to exactly satisfy N and BA
+#'   equality constraints while minimising ||n_hat - n_seed||^2. Uses the
+#'   analytical KKT / Lagrange-multiplier solution on the active (non-zero)
+#'   class subset; an active-set repair loop clamps negative counts to zero
+#'   and re-solves on the remaining classes. A bracketing fallback handles the
+#'   rare case where the active set becomes rank-deficient.
+#' @param n_seed Numeric vector. Initial stems/ha per DBH class.
+#' @param N_target Numeric. Target total stems/ha (equality constraint).
+#' @param BA_target Numeric. Target basal area m\eqn{^2}/ha (equality
+#'   constraint).
+#' @param midpoints_cm Numeric vector. Class representative diameters (cm).
+#'   Default: [SG_DBH_MIDPOINTS].
+#' @param tol Numeric. Tolerance for detecting negative counts. Default `1e-9`.
+#' @param max_iter Integer. Maximum repair iterations. Default 20.
+#' @return Numeric vector of adjusted stems/ha satisfying both constraints.
+#' @references Cao & Baldwin (1999) Forest Science.
+#' @keywords internal
+cao_baldwin_solver_ <- function(n_seed, N_target, BA_target,
+                                 midpoints_cm = SG_DBH_MIDPOINTS,
+                                 tol      = 1e-9,
+                                 max_iter = 20L) {
+  p  <- length(n_seed)
+  a  <- (pi / 4) * (midpoints_cm / 100)^2
+  dG <- sqrt(4 * BA_target / (pi * N_target)) * 100
+
+  .solve_cls_2c <- function(n_active, a_active, N_t, BA_t) {
+    A   <- rbind(rep(1, length(n_active)), a_active)
+    b   <- c(N_t, BA_t)
+    rhs <- as.numeric(A %*% n_active) - b
+    lam <- solve(A %*% t(A), rhs)
+    as.numeric(n_active - t(A) %*% lam)
+  }
+
+  .bracketing_fallback <- function() {
+    n_out <- rep(0, p)
+    k     <- findInterval(dG, midpoints_cm)
+    k     <- max(1L, min(k, p - 1L))
+    k2    <- k + 1L
+    n2    <- (BA_target - a[k]  * N_target) / (a[k2] - a[k])
+    n1    <- N_target - n2
+    n1    <- max(0, n1); n2 <- max(0, n2)
+    tot   <- n1 + n2
+    if (tot > 0) { n1 <- n1 / tot * N_target; n2 <- n2 / tot * N_target }
+    n_out[k] <- n1; n_out[k2] <- n2
+    n_out
+  }
+
+  active <- rep(TRUE, p)
+  n_hat  <- n_seed
+
+  for (iter in seq_len(max_iter)) {
+    idx <- which(active)
+    if (length(idx) < 2L) { n_hat <- .bracketing_fallback(); break }
+
+    n_adj_active <- tryCatch(
+      .solve_cls_2c(n_seed[idx], a[idx], N_target, BA_target),
+      error = function(e) {
+        warning(paste("cao_baldwin_solver_: CLS solve failed:",
+                      conditionMessage(e)))
+        NULL
+      }
+    )
+    if (is.null(n_adj_active)) { n_hat <- .bracketing_fallback(); break }
+
+    n_hat      <- rep(0, p)
+    n_hat[idx] <- n_adj_active
+
+    neg_idx <- which(n_hat < -tol)
+    if (length(neg_idx) == 0L) break
+    active[neg_idx] <- FALSE
+  }
+
+  n_hat[n_hat < 0] <- 0
+  n_hat
+}
+
+
+# 6e ---- SSD generators (exported) ------------------------------------------
+
+#' Generate a Weibull (unimodal) synthetic SSD with exact N and BA constraints
+#'
+#' @description Forward generator for even-aged or unimodal stand structures.
+#'   \enumerate{
+#'     \item [stand_qmd()] links N and BA to a characteristic diameter scale dG.
+#'     \item Siipilehto seed: b = dG / (-ln(0.5))^(1/c) provides an initial
+#'       Weibull scale approximating the basal-area median diameter.
+#'     \item Cao-Baldwin 2-constraint CLS enforces sum(n_i) = N and
+#'       sum(a_i * n_i) = BA exactly.
+#'   }
+#' @param c_shape Numeric. Weibull shape parameter (> 0). Typical values:
+#'   1.5 = right-skewed (young/post-disturbance), 2.5 = symmetric bell
+#'   (managed even-aged), 3.5 = narrow bell (uniform plantation).
+#' @param N_target Numeric. Target stem density (stems/ha).
+#' @param BA_target Numeric. Target basal area (m\eqn{^2}/ha).
+#' @param dbh_rep Numeric vector. Class representative diameters (cm).
+#'   Default: [SG_DBH_MIDPOINTS].
+#' @param breaks_cm Numeric vector. Class break points (cm).
+#'   Default: [SG_DBH_BREAKS].
+#' @return Numeric vector (length = `length(dbh_rep)`) of stems/ha per class.
+#' @seealso [generate_ssd_reverse_j()], [generate_ssd_bimodal()],
+#'   [classify_ssd()], [SG_DBH_MIDPOINTS], [SG_DBH_BREAKS].
+#' @examples
+#' generate_ssd_weibull(c_shape = 2.5, N_target = 600, BA_target = 28)
+#' @export
+generate_ssd_weibull <- function(c_shape, N_target, BA_target,
+                                  dbh_rep   = SG_DBH_MIDPOINTS,
+                                  breaks_cm = SG_DBH_BREAKS) {
+  dG     <- stand_qmd(N_target, BA_target)
+  b      <- siipilehto_scale_(d_gM = dG, c_shape = c_shape)
+  p      <- weibull_class_probs_(b_scale = b, c_shape = c_shape,
+                                  breaks_cm = breaks_cm)
+  n_seed <- p * N_target
+  cao_baldwin_solver_(n_seed, N_target, BA_target, midpoints_cm = dbh_rep)
+}
+
+
+#' Generate a Reverse-J (de Liocourt) synthetic SSD with exact N and BA
+#'
+#' @description Forward generator for uneven-aged or reverse-J stand structures
+#'   using the BDq (de Liocourt) geometric seed distribution.
+#'   \enumerate{
+#'     \item De Liocourt seed: N_i = N1 * q^(-(i-1)), with N1 chosen so the
+#'       total equals N_target exactly.
+#'     \item Cao-Baldwin 2-constraint CLS enforces exact N and BA.
+#'   }
+#'   Note: q is an independent structural design parameter controlling the
+#'   steepness of the reverse-J curve. The same (N, BA) pair is consistent with
+#'   different q values (Murphy & Farrar 1982), so q must be supplied as a
+#'   separate structural axis.
+#' @param q Numeric. De Liocourt q-ratio (> 1). Typical values:
+#'   1.2 = gentle decline (old selection forest), 1.5 = typical managed
+#'   uneven-aged, 2.0 = steep reverse-J (dense regeneration).
+#' @param N_target Numeric. Target stem density (stems/ha).
+#' @param BA_target Numeric. Target basal area (m\eqn{^2}/ha).
+#' @param dbh_rep Numeric vector. Class representative diameters (cm).
+#'   Default: [SG_DBH_MIDPOINTS].
+#' @return Numeric vector (length = `length(dbh_rep)`) of stems/ha per class.
+#' @references Murphy & Farrar (1982) Forest Science.
+#' @seealso [generate_ssd_weibull()], [generate_ssd_bimodal()],
+#'   [classify_ssd()], [SG_DBH_MIDPOINTS].
+#' @examples
+#' generate_ssd_reverse_j(q = 1.5, N_target = 800, BA_target = 32)
+#' @export
+generate_ssd_reverse_j <- function(q, N_target, BA_target,
+                                    dbh_rep = SG_DBH_MIDPOINTS) {
+  n_seed <- deliocourt_seeds_(N_target, q, n_classes = length(dbh_rep))
+  cao_baldwin_solver_(n_seed, N_target, BA_target, midpoints_cm = dbh_rep)
+}
+
+
+#' Generate a bimodal (two-cohort Gaussian) synthetic SSD with exact N and BA
+#'
+#' @description Forward generator for two-cohort stand structures with distinct
+#'   bimodal diameter distributions. Two Gaussian components replace Weibull
+#'   components: Gaussian tails decay faster, producing a sharper inter-cohort
+#'   valley and avoiding the right-tail bleed that causes Weibull mixtures to
+#'   appear unimodal when cohorts are closely spaced.
+#'   \enumerate{
+#'     \item [stand_qmd()] anchors both cohort modes relative to dG:
+#'       mu1 = r1 * dG (understory), mu2 = r2 * dG (overstory), both with
+#'       sigma = sigma_frac * dG.
+#'     \item N-split w_N is derived analytically from the BA-conservation
+#'       constraint E_mix[D^2] = dG^2 to ensure seed BA = BA_target exactly.
+#'     \item Cao-Baldwin 2-constraint CLS enforces exact N and BA.
+#'   }
+#'   Falls back to a Weibull (c = 2.5) when the understory mode falls below
+#'   `theta_cm + sigma` (below the measurement threshold) or when mode
+#'   separation is < 2.5 * sigma (valley not statistically distinct).
+#' @param r1 Numeric. Mode ratio for understory cohort relative to dG
+#'   (r1 < 1). Default: 0.50.
+#' @param r2 Numeric. Mode ratio for overstory cohort relative to dG
+#'   (r2 > 1). Default: 1.50.
+#' @param sigma_frac Numeric. Gaussian standard deviation as fraction of dG.
+#'   Default: 0.12.
+#' @param N_target Numeric. Target stem density (stems/ha).
+#' @param BA_target Numeric. Target basal area (m\eqn{^2}/ha).
+#' @param dbh_rep Numeric vector. Class representative diameters (cm).
+#'   Default: [SG_DBH_MIDPOINTS].
+#' @param breaks_cm Numeric vector. Class break points including final `Inf`
+#'   (cm). Default: [SG_DBH_BREAKS].
+#' @param theta_cm Numeric. Minimum measured DBH (cm); understory mode must
+#'   exceed `theta_cm + sigma` to avoid the Weibull fallback.
+#'   Default: [SG_DBH_THETA].
+#' @return Numeric vector (length = `length(dbh_rep)`) of stems/ha per class.
+#' @importFrom stats pnorm
+#' @seealso [generate_ssd_weibull()], [generate_ssd_reverse_j()],
+#'   [classify_ssd()], [SG_DBH_MIDPOINTS], [SG_DBH_BREAKS], [SG_DBH_THETA].
+#' @examples
+#' generate_ssd_bimodal(r1 = 0.50, r2 = 1.50, N_target = 800, BA_target = 35)
+#' @export
+generate_ssd_bimodal <- function(r1 = 0.50, r2 = 1.50,
+                                  sigma_frac = 0.12,
+                                  N_target, BA_target,
+                                  dbh_rep   = SG_DBH_MIDPOINTS,
+                                  breaks_cm = SG_DBH_BREAKS,
+                                  theta_cm  = SG_DBH_THETA) {
+  dG    <- stand_qmd(N_target, BA_target)
+  mu1   <- r1 * dG
+  mu2   <- r2 * dG
+  sigma <- sigma_frac * dG
+
+  fallback_needed <- (mu1 < theta_cm + sigma) || ((mu2 - mu1) < 2.5 * sigma)
+  if (fallback_needed) {
+    b_fb <- siipilehto_scale_(d_gM = dG, c_shape = 2.5)
+    p_fb <- weibull_class_probs_(b_fb, 2.5, theta = theta_cm,
+                                  breaks_cm = breaks_cm)
+    return(cao_baldwin_solver_(p_fb * N_target, N_target, BA_target,
+                                midpoints_cm = dbh_rep))
+  }
+
+  gauss_class_probs <- function(mu, sigma, breaks) {
+    pmax(pnorm(breaks[-1L], mean = mu, sd = sigma) -
+           pnorm(breaks[-length(breaks)], mean = mu, sd = sigma), 0)
+  }
+
+  w_N <- (dG^2 - mu2^2 - sigma^2) / (mu1^2 - mu2^2)
+  w_N <- max(0.05, min(0.95, w_N))
+
+  p1    <- gauss_class_probs(mu1, sigma, breaks_cm)
+  p2    <- gauss_class_probs(mu2, sigma, breaks_cm)
+  p_mix <- w_N * p1 + (1 - w_N) * p2
+  p_mix <- p_mix / sum(p_mix)
+
+  cao_baldwin_solver_(p_mix * N_target, N_target, BA_target,
+                       midpoints_cm = dbh_rep)
+}
+
+
+# 6f ---- Prediction quality metrics (exported) -------------------------------
+
+#' Compute a full prediction quality metric suite for one stand
+#'
+#' @description Evaluates KL divergence, Jensen-Shannon divergence, RMSE, and
+#'   R-squared between an observed (absolute) and a predicted (relative) stem
+#'   size distribution for a single stand. Designed for use inside
+#'   `lapply()` / `purrr::map()` loops over stand lists or validation datasets.
+#'
+#'   The predicted relative SSD is converted to absolute counts using
+#'   `N_total` before computing RMSE and R-squared; KL and JSD receive the
+#'   normalised distributions.
+#'
+#' @param true_abs Numeric vector. Observed absolute stem counts per DBH class
+#'   (stems/ha or any consistent scale; inputs are renormalised internally for
+#'   KL and JSD).
+#' @param pred_rel Numeric vector. Predicted relative SSD (e.g. one row from a
+#'   model output matrix), same length as `true_abs`. Need not sum exactly to 1;
+#'   KL and JSD renormalise internally.
+#' @param N_total Numeric scalar. Total stand stem density used to convert
+#'   `pred_rel` to absolute counts for RMSE and R-squared. Defaults to
+#'   `sum(true_abs)`.
+#' @return A one-row [tibble::tibble()] with columns:
+#'   \describe{
+#'     \item{kl}{KL divergence KL(true || pred) in nats.}
+#'     \item{jsd}{Jensen-Shannon divergence in nats, bounded [0, ln(2)].}
+#'     \item{rmse}{Root mean squared error of absolute stem counts.}
+#'     \item{r2}{R-squared of absolute stem counts (NA if observed variance
+#'       is zero).}
+#'   }
+#'   Returns a row of NA values if `N_total < 1`.
+#' @importFrom tibble tibble
+#' @seealso [jsd_divergence()], [kl_divergence_metric()],
+#'   [perturb_features()] for the noise-robustness workflow.
+#' @examples
+#' obs  <- c(400, 200, 100, 50, 20, 10, 5, 2, 1, 0)
+#' pred <- c(0.52, 0.25, 0.11, 0.05, 0.025, 0.015,
+#'           0.01, 0.005, 0.003, 0.002)
+#' compute_prediction_metrics(obs, pred)
+#' @export
+compute_prediction_metrics <- function(true_abs, pred_rel,
+                                        N_total = sum(true_abs)) {
+  na_row <- tibble::tibble(kl = NA_real_, jsd = NA_real_,
+                            rmse = NA_real_, r2 = NA_real_)
+  if (is.na(N_total) || N_total < 1) return(na_row)
+
+  pred_abs <- pred_rel * N_total
+  true_rel <- true_abs / N_total
+
+  kl  <- kl_divergence_nats_(true_rel, pred_rel)
+  jsd <- jsd_divergence(true_rel, pred_rel)
+
+  rmse   <- sqrt(mean((true_abs - pred_abs)^2))
+  ss_res <- sum((true_abs - pred_abs)^2)
+  ss_tot <- sum((true_abs - mean(true_abs))^2)
+  r2     <- if (ss_tot > 0) 1 - ss_res / ss_tot else NA_real_
+
+  tibble::tibble(kl = kl, jsd = jsd, rmse = rmse, r2 = r2)
+}
+
+
+#' Apply multiplicative feature perturbation and re-scale for model input
+#'
+#' @description Applies multiplicative noise to selected features in a raw
+#'   (unscaled) feature data frame, then re-scales all features using training
+#'   scalers and returns a matrix ready for model prediction. Designed for
+#'   noise-robustness analysis: by varying one or more features by a fixed
+#'   multiplier and measuring the resulting prediction change, callers can
+#'   quantify error propagation through the neural network.
+#'
+#'   Features not in `perturb_feats` are passed through unchanged before
+#'   scaling. Features absent from `scalers$min` (not normalised during
+#'   training) are passed through without scaling.
+#'
+#' @param features_raw Data frame. Raw (unscaled) feature values, one row per
+#'   observation. Column names must match those in `scalers` and `feature_order`.
+#' @param perturb_feats Character vector. Names of features to perturb.
+#' @param multipliers Numeric vector. Multiplicative factor for each feature in
+#'   `perturb_feats`, same length and order. A value of 1.10 applies a +10\%
+#'   perturbation.
+#' @param scalers Named list with elements `$min` and `$max`, each a named
+#'   numeric vector of per-feature min-max scaling bounds from model training.
+#' @param feature_order Character vector. Column order for the output matrix,
+#'   matching the input order the model expects.
+#' @return Numeric matrix with `nrow(features_raw)` rows and
+#'   `length(feature_order)` columns, ready for `predict(model, ...)`.
+#' @seealso [compute_prediction_metrics()] for evaluating the resulting
+#'   perturbed predictions.
+#' @examples
+#' \dontrun{
+#' X_perturbed <- perturb_features(
+#'   features_raw  = stand_features,
+#'   perturb_feats = "basal_area.m2.ha",
+#'   multipliers   = 1.10,
+#'   scalers       = training_scalers,
+#'   feature_order = feature_names
+#' )
+#' preds <- predict(model, X_perturbed, verbose = 0)
+#' compute_prediction_metrics(true_ssd, preds[1, ])
+#' }
+#' @export
+perturb_features <- function(features_raw, perturb_feats, multipliers,
+                               scalers, feature_order) {
+  fn <- features_raw
+  for (k in seq_along(perturb_feats)) {
+    feat       <- perturb_feats[k]
+    fn[[feat]] <- features_raw[[feat]] * multipliers[k]
+  }
+  fs <- fn
+  for (feat_name in colnames(fn)) {
+    if (feat_name %in% names(scalers$min)) {
+      fs[[feat_name]] <- (fn[[feat_name]] - scalers$min[[feat_name]]) /
+                         (scalers$max[[feat_name]] - scalers$min[[feat_name]])
+    }
+  }
+  as.matrix(fs[, feature_order])
+}
