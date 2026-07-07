@@ -14,9 +14,7 @@
 *.so
 *.dll
 
-# Generated documentation
-man/
-NAMESPACE
+# Generated documentation (man/ and NAMESPACE are committed — reviewers and CRAN need them)
 deepReveal.pdf
 
 # Vignette build products
@@ -39,3 +37,8 @@ pkgdown/
 /credentials/
 /doc/
 /Meta/
+
+# Private governance and AI development environment — must never be pushed publicly
+.claude/
+docs/adr/
+
