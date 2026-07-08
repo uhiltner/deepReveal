@@ -39,8 +39,9 @@ pkgdown/
 /Meta/
 
 # Private governance and AI development environment — must never be pushed publicly
+# docs/ contains ADRs, journals, and internal review artefacts — all local only
 .claude/
-docs/adr/
+docs/
 
 # Development utility scripts — not part of the public package
 anonymize_model_data.R
