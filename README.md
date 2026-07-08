@@ -9,7 +9,7 @@ Neural networks are powerful tools, but their complexity can make them difficult
 - **Feature Importance:** Which input variables are the primary drivers of the model's predictions?
 - **Model Behavior:** How do predictions change in response to key drivers? Are the learned relationships linear, non-linear, or threshold-based?
 - **Model Parsimony:** Could a simpler model with fewer inputs achieve comparable performance?
-- **Prediction Quality:** How accurately does the model reproduce the structural type of the target distribution, and how do predictions compare under multiple metrics?
+- **Ecological Benchmarking:** Do predicted distributions conform to expected structural archetypes (even-aged, all-aged, two-cohort)? How do predictions compare to theoretical reference distributions, quantified across multiple complementary metrics (KL divergence, Jensen-Shannon divergence, RMSE, R²)?
 
 ## Core Features
 
@@ -19,8 +19,10 @@ Neural networks are powerful tools, but their complexity can make them difficult
 - **`feature_value_sensitivity()`**: Explores the learned functional relationships by showing how model predictions respond as key features are varied across their range.
 - **`compile_fit_predict_nn()`**: A flexible training engine to build, compile, fit, and predict with custom or pre-defined Keras model architectures.
 - **`run_feature_set_sensitivity_training()`**: Automates the process of retraining models on different subsets of features to systematically test for model parsimony.
+- **`plot_feature_set_val_loss_heatmap()`**: Visualizes the results of `run_feature_set_sensitivity_training()` as a heatmap of minimum validation loss per feature set, ordered from best to worst performing and annotated with global feature importance.
+- **`generate_feature_set_prediction_plots()`**: Batch-processes all feature-set training results, calling `analyze_and_visualize_predictions()` for each model to produce a complete set of per-feature-set evaluation outputs in separate subdirectories.
 - **`analyze_and_visualize_predictions()`**: Generates diagnostic plots and statistics (R², RMSE, KL divergence per class) for a deep evaluation of model performance.
-- **`kl_divergence_metric()`**: Row-wise Kullback-Leibler divergence loss, usable as a custom metric in all sensitivity functions.
+- **`kl_divergence_metric()`**: Row-wise Kullback-Leibler divergence loss, usable as a custom `metric_function` in all sensitivity functions.
 
 ### Forest Structure Analysis (v0.2.0)
 
