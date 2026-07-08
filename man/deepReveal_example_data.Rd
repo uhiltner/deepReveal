@@ -5,7 +5,7 @@
 \alias{deepReveal_example_data}
 \title{Example Data for the deepReveal Package}
 \format{
-A list named `deepReveal_example_data` with 7 elements:
+A list named `deepReveal_example_data` with 8 elements:
 \describe{
   \item{train_data}{A data frame with the training subset. Contains an
     anonymized `inventory_id` column, plus all input and target features.}

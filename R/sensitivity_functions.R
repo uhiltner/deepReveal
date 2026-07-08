@@ -121,11 +121,11 @@
 permutation_feature_importance <- function(model_path,
                                            model_data_path,
                                            model_data_name,
-                                           custom_loss_alpha = NULL, # MODIFIED: Added parameter
+                                           custom_loss_alpha = NULL,
                                            input_feature_set,
                                            target_features = NULL,
                                            metric_function,
-                                           higher_is_better = TRUE,
+                                           higher_is_better = FALSE,
                                            feature_labels = NULL,
                                            plot_filename = NULL,
                                            plot_save_path = NULL,
@@ -380,7 +380,6 @@ permutation_feature_importance <- function(model_path,
 #'       impact of measurement errors or small shifts in input data.
 #'
 #' @section Handling Custom Loss Functions:
-#'   # NEW: Added section for clarity
 #'   If the Keras model was trained with a custom loss function, this function
 #'   can load it correctly, provided the loss function follows the structure of
 #'   a weighted sum of KL divergence and Mean Absolute Error. To enable this,
@@ -397,7 +396,7 @@ permutation_feature_importance <- function(model_path,
 #'   containing the data object.
 #' @param model_data_name A string specifying the name of the R object within the
 #'   `.RData` file. This object must contain `test_data`, `input_features`, and `target_features`.
-#' @param custom_loss_alpha # NEW: An optional numeric value. If the model was trained with the custom
+#' @param custom_loss_alpha An optional numeric value. If the model was trained with the custom
 #'   combined KLD+MAE loss, provide the alpha weight used during training here.
 #'   Defaults to `NULL`, assuming a standard loss function.
 #' @param importance_results A data frame with a 'Feature' column, typically the
@@ -743,7 +742,7 @@ feature_value_sensitivity <- function(model_path,
 #'   `val_data`, `test_data`, `input_features`, and `target_features`.
 #' @param feature_sets_list A named list where each element is a character vector
 #'   representing a subset of input feature names to be used for training.
-#' @param nn_config # MODIFIED: A list of parameters to be passed to the
+#' @param nn_config A list of parameters to be passed to the
 #'   `compile_fit_predict_nn_func`. This list must contain either an `architecture`
 #'   string (e.g., "manuscript_model_v3") OR a `build_model_func` function. It
 #'   should also include `build_params`, `fit_params`, `loss`, etc.
@@ -957,7 +956,7 @@ run_feature_set_sensitivity_training <- function(model_data_path,
 #'   \item{plot_data}{The data frame used for plotting.}
 #'   \item{plot}{The ggplot object for the heatmap, which can be further customized.}
 #'
-#' @importFrom dplyr %>% bind_rows group_by summarise arrange desc pull filter mutate first
+#' @importFrom dplyr bind_rows group_by summarise arrange desc pull filter mutate first
 #' @importFrom ggplot2 ggplot aes geom_tile geom_text labs theme_minimal theme element_blank element_text rel element_rect margin scale_fill_gradient2 scale_fill_gradient guide_colorbar scale_fill_distiller ggsave
 #' @importFrom viridis scale_fill_viridis
 #' @importFrom RColorBrewer brewer.pal.info
@@ -1324,9 +1323,8 @@ generate_feature_set_prediction_plots <- function(
 #' @importFrom rlang .data :=
 #' @importFrom stringr str_sort
 #' @importFrom philentropy KL
-#' @importFrom Metrics rmse
+#' @importFrom Metrics rmse mse mae
 #' @importFrom magrittr %>%
-#' @importFrom entropy KL.empirical
 #'
 #' @examples
 #' \dontrun{
@@ -1406,7 +1404,6 @@ analyze_and_visualize_predictions <- function(
 
   # --- 0. Initial Setup & Validation ---
   if (!requireNamespace("Metrics", quietly = TRUE)) stop("Package 'Metrics' is required.")
-  if (!requireNamespace("entropy", quietly = TRUE)) stop("Package 'entropy' is required for per-class KL divergence.")
 
   # --- 1. Calculate Per-Stand Statistics ---
   stand_stats_df <- test_data_with_predictions %>%
@@ -1415,7 +1412,8 @@ analyze_and_visualize_predictions <- function(
       R2 = {
         true <- dplyr::c_across(dplyr::all_of(target_features))
         pred <- dplyr::c_across(paste0(target_features, "_pred"))
-        if(stats::var(true, na.rm = TRUE) > 1e-9 && stats::var(pred, na.rm = TRUE) > 1e-9) stats::cor(true, pred)^2 else NA_real_
+        ss_tot <- sum((true - mean(true, na.rm = TRUE))^2, na.rm = TRUE)
+        if (ss_tot > 1e-9) 1 - sum((true - pred)^2, na.rm = TRUE) / ss_tot else NA_real_
       },
       RMSE = Metrics::rmse(dplyr::c_across(dplyr::all_of(target_features)), dplyr::c_across(paste0(target_features, "_pred"))),
       MSE = Metrics::mse(dplyr::c_across(dplyr::all_of(target_features)), dplyr::c_across(paste0(target_features, "_pred"))),
@@ -1429,14 +1427,12 @@ analyze_and_visualize_predictions <- function(
     true_vals <- test_data_with_predictions[[feature]]
     pred_vals <- test_data_with_predictions[[pred_col]]
 
-    # Column-wise normalization for KL
-    norm_true <- (true_vals + 1) / sum(true_vals + 1)
-    norm_pred <- (pred_vals + 1) / sum(pred_vals + 1)
-    kl_div <- entropy::KL.empirical(norm_true, norm_pred)
+    kl_div <- kl_divergence_nats_(true_vals, pred_vals)
 
+    ss_tot_cls <- sum((true_vals - mean(true_vals, na.rm = TRUE))^2, na.rm = TRUE)
     data.frame(
       Target_Feature = feature,
-      R2 = if(stats::var(true_vals) > 1e-9 && stats::var(pred_vals) > 1e-9) stats::cor(true_vals, pred_vals)^2 else NA,
+      R2 = if (ss_tot_cls > 1e-9) 1 - sum((true_vals - pred_vals)^2, na.rm = TRUE) / ss_tot_cls else NA_real_,
       RMSE = Metrics::rmse(true_vals, pred_vals),
       MSE = Metrics::mse(true_vals, pred_vals),
       MAE = Metrics::mae(true_vals, pred_vals),
@@ -1575,6 +1571,7 @@ analyze_and_visualize_predictions <- function(
 #'   \item{predictions}{A data frame containing the model's predictions on the test set.}
 #'
 #' @importFrom stats predict
+#' @importFrom rlang %||%
 #'
 #' @examples
 #' \dontrun{
@@ -1750,7 +1747,7 @@ compile_fit_predict_nn <- function(train_data,
     })
   }
 
-  if (is.null(model) || !inherits(model, "keras.src.models.model.Model")) {
+  if (is.null(model)) {
     stop("Model building failed or did not return a valid Keras model object.")
   }
 
@@ -1784,8 +1781,6 @@ compile_fit_predict_nn <- function(train_data,
   predictions_df <- as.data.frame(predictions_matrix)
   colnames(predictions_df) <- paste0(target_features, "_pred")
 
-  print(summary(model))
-
   # --- 7. Return Results ---
   return(list(
     model = model,
@@ -1812,6 +1807,21 @@ compile_fit_predict_nn <- function(train_data,
 #'   normalization. Defaults to `1e-9`.
 #'
 #' @return A single numeric value representing the mean KL divergence.
+#'
+#' @examples
+#' # Identical distributions: KL ≈ 0
+#' y <- matrix(c(10, 20, 30, 40), nrow = 1)
+#' kl_divergence_metric(y, y)
+#'
+#' # Different distributions: KL > 0
+#' true_y <- matrix(c(100,   0,  0,  0), nrow = 1)
+#' pred_y <- matrix(c(  0,   0,  0, 100), nrow = 1)
+#' kl_divergence_metric(true_y, pred_y)
+#'
+#' # Use as metric_function in PFI (ADR-001 canonical metric):
+#' # permutation_feature_importance(...,
+#' #   metric_function  = kl_divergence_metric,
+#' #   higher_is_better = FALSE)
 #'
 #' @importFrom philentropy distance
 #'
@@ -2489,6 +2499,12 @@ compute_prediction_metrics <- function(true_abs, pred_rel,
 #'   Features not in `perturb_feats` are passed through unchanged before
 #'   scaling. Features absent from `scalers$min` (not normalised during
 #'   training) are passed through without scaling.
+#'
+#'   **No clamping is applied** after scaling. Multipliers that push a raw
+#'   value outside the training range produce scaled values outside `[0, 1]`,
+#'   constituting deliberate out-of-distribution (OOD) inputs. This is
+#'   intentional for stress-testing; callers should interpret OOD results
+#'   accordingly.
 #'
 #' @param features_raw Data frame. Raw (unscaled) feature values, one row per
 #'   observation. Column names must match those in `scalers` and `feature_order`.

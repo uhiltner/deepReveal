@@ -43,6 +43,12 @@ Applies multiplicative noise to selected features in a raw
   Features not in `perturb_feats` are passed through unchanged before
   scaling. Features absent from `scalers$min` (not normalised during
   training) are passed through without scaling.
+
+  **No clamping is applied** after scaling. Multipliers that push a raw
+  value outside the training range produce scaled values outside `[0, 1]`,
+  constituting deliberate out-of-distribution (OOD) inputs. This is
+  intentional for stress-testing; callers should interpret OOD results
+  accordingly.
 }
 \examples{
 \dontrun{

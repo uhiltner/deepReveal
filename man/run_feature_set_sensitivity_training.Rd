@@ -28,7 +28,7 @@ file.}
 \item{feature_sets_list}{A named list where each element is a character vector
 representing a subset of input feature names to be used for training.}
 
-\item{nn_config}{# MODIFIED: A list of parameters to be passed to the
+\item{nn_config}{A list of parameters to be passed to the
 `compile_fit_predict_nn_func`. This list must contain either an `architecture`
 string (e.g., "manuscript_model_v3") OR a `build_model_func` function. It
 should also include `build_params`, `fit_params`, `loss`, etc.}

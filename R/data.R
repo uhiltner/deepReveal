@@ -11,7 +11,7 @@
 #'   and target features used for the benchmark NN model. All numeric values have
 #'   been slightly modified with random noise to ensure full anonymization.
 #'
-#' @format A list named `deepReveal_example_data` with 7 elements:
+#' @format A list named `deepReveal_example_data` with 8 elements:
 #' \describe{
 #'   \item{train_data}{A data frame with the training subset. Contains an
 #'     anonymized `inventory_id` column, plus all input and target features.}

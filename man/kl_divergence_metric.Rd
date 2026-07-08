@@ -28,3 +28,19 @@ This function treats each row of the input matrices (`true_y`, `pred_y`)
   as a separate probability distribution. For each row, it calculates the
   KL divergence DKL(P || Q) and returns the mean of these values.
 }
+\examples{
+# Identical distributions: KL ≈ 0
+y <- matrix(c(10, 20, 30, 40), nrow = 1)
+kl_divergence_metric(y, y)
+
+# Different distributions: KL > 0
+true_y <- matrix(c(100,   0,  0,  0), nrow = 1)
+pred_y <- matrix(c(  0,   0,  0, 100), nrow = 1)
+kl_divergence_metric(true_y, pred_y)
+
+# Use as metric_function in PFI (ADR-001 canonical metric):
+# permutation_feature_importance(...,
+#   metric_function  = kl_divergence_metric,
+#   higher_is_better = FALSE)
+
+}

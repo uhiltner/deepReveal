@@ -35,7 +35,7 @@ containing the data object.}
 \item{model_data_name}{A string specifying the name of the R object within the
 `.RData` file. This object must contain `test_data`, `input_features`, and `target_features`.}
 
-\item{custom_loss_alpha}{# NEW: An optional numeric value. If the model was trained with the custom
+\item{custom_loss_alpha}{An optional numeric value. If the model was trained with the custom
 combined KLD+MAE loss, provide the alpha weight used during training here.
 Defaults to `NULL`, assuming a standard loss function.}
 
@@ -110,7 +110,6 @@ This function is a core component of the sensitivity analysis
 }
 \section{Handling Custom Loss Functions}{
 
-  # NEW: Added section for clarity
   If the Keras model was trained with a custom loss function, this function
   can load it correctly, provided the loss function follows the structure of
   a weighted sum of KL divergence and Mean Absolute Error. To enable this,

@@ -12,7 +12,7 @@ permutation_feature_importance(
   input_feature_set,
   target_features = NULL,
   metric_function,
-  higher_is_better = TRUE,
+  higher_is_better = FALSE,
   feature_labels = NULL,
   plot_filename = NULL,
   plot_save_path = NULL,
