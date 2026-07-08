@@ -372,8 +372,153 @@ print(all_set_stats$Top2_Features$plots$histogram)
 
 ```
 
+---
 
-## 3. Conclusion
+## **Part 4: Ecological Interpretation — Forest Structure Classification and Prediction Quality**
+
+Parts 1–3 revealed *which* inputs drive the model, how it responds to them, and whether simpler feature sets achieve comparable accuracy. This part shifts the focus from *how well* to *what*: what ecological structure type does the model predict, and how do its predictions compare to theoretically derived benchmarks? All three subsections are fully self-contained and require no Keras or Python installation.
+
+### 1. Generating Theoretical Reference SSDs
+
+**Methodological Context:** Parts 1–3 evaluate the model against real inventory stands drawn from the training distribution. This subsection introduces a complementary perspective: *theoretical* reference distributions. The `generate_ssd_weibull`, `generate_ssd_reverse_j`, and `generate_ssd_bimodal` functions each produce a complete stem size distribution (SSD) from just two stand-level parameters — total stem density (N, stems/ha) and basal area (BA, m²/ha). The resulting SSDs represent idealised ecological archetypes: a smooth Weibull curve (characteristic of even-aged stands), a strictly decreasing reverse-J (characteristic of all-aged selection forests), or a two-cohort bimodal mixture. A Cao-Baldwin constrained least-squares solver ensures that the generated SSD conserves both N and BA exactly — not approximately. This makes the generators useful for (1) building controlled benchmarks against which model generalisation can be tested, and (2) placing any predicted SSD in ecological context by comparing it to the nearest known archetype.
+
+```{r generate-reference-ssds, eval=TRUE}
+# Stand parameters for a moderate mixed stand
+N  <- 400   # stems/ha
+BA <- 28    # m²/ha
+
+# Quadratic mean diameter — the stand-level summary used internally by all generators
+dG <- stand_qmd(N_target = N, BA_target = BA)
+cat("Quadratic mean diameter:", round(dG, 1), "cm\n")
+
+# Generate one SSD per archetype
+ssd_weibull   <- generate_ssd_weibull(c_shape = 2.5, N_target = N, BA_target = BA)
+ssd_reverse_j <- generate_ssd_reverse_j(q = 1.3,     N_target = N, BA_target = BA)
+ssd_bimodal   <- generate_ssd_bimodal(r1 = 0.5, r2 = 1.5, N_target = N, BA_target = BA)
+
+# Verify that both N and BA are conserved exactly
+cat("Weibull   — N:", round(sum(ssd_weibull),   1),
+    "  BA:", round(stand_basal_area(ssd_weibull),   2), "m²/ha\n")
+cat("Reverse-J — N:", round(sum(ssd_reverse_j), 1),
+    "  BA:", round(stand_basal_area(ssd_reverse_j), 2), "m²/ha\n")
+cat("Bimodal   — N:", round(sum(ssd_bimodal),   1),
+    "  BA:", round(stand_basal_area(ssd_bimodal),   2), "m²/ha\n")
+```
+
+```{r plot-reference-ssds, eval=TRUE}
+ssd_plot_df <- data.frame(
+  midpoint_cm = rep(SG_DBH_MIDPOINTS, 3),
+  stems_ha    = c(ssd_weibull, ssd_reverse_j, ssd_bimodal),
+  archetype   = factor(
+    rep(c("Weibull (unimodal)", "Reverse-J (all-aged)", "Bimodal (two-cohort)"), each = 10),
+    levels = c("Weibull (unimodal)", "Reverse-J (all-aged)", "Bimodal (two-cohort)")
+  )
+)
+
+ggplot(ssd_plot_df, aes(x = midpoint_cm, y = stems_ha, fill = archetype)) +
+  geom_col(position = "dodge", width = 3) +
+  scale_fill_manual(values = c("#E69F00", "#56B4E9", "#009E73")) +
+  labs(x = "DBH class midpoint (cm)", y = "Stems per hectare", fill = NULL,
+       title = paste0("Three reference SSDs  —  N = ", N,
+                      " stems/ha,  BA = ", BA, " m²/ha")) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+```
+
+### 2. Classifying Forest Structure Archetypes
+
+**Methodological Context:** The `analyze_and_visualize_predictions` function in Part 2 quantifies *how much* the model's predictions deviate from observations — through scatter plots, histograms, and summary statistics. `classify_ssd` asks a different question: is the predicted *type* of forest structure ecologically correct? A model might achieve low mean KL divergence while systematically misclassifying even-aged stands (Unimodal) as selection forests (Reverse-J) — two structures with fundamentally different management implications. The function assigns each SSD to one of four ecological archetypes — **Reverse-J**, **Unimodal**, **Bimodal**, or **Irregular** — using a combination of local peak detection and a de Liocourt monotonicity criterion on absolute stem counts. It returns a named list; the archetype label is accessed via `$category`. The demonstration below classifies the three reference SSDs from subsection 1, which serves both to confirm that each generator produces the expected archetype and to illustrate the required input format before applying it to field data.
+
+```{r classify-reference-archetypes, eval=TRUE}
+# classify_ssd expects absolute stem counts and the total stem density
+arch_weibull   <- classify_ssd(ssd_weibull,   stem_number = N)
+arch_reverse_j <- classify_ssd(ssd_reverse_j, stem_number = N)
+arch_bimodal   <- classify_ssd(ssd_bimodal,   stem_number = N)
+
+cat("Weibull generator produces:   ", arch_weibull$category,   "\n")
+cat("Reverse-J generator produces: ", arch_reverse_j$category, "\n")
+cat("Bimodal generator produces:   ", arch_bimodal$category,   "\n")
+```
+
+To classify model predictions on field data, the observed proportions from the model output must first be converted to absolute stem counts by multiplying by the unscaled total stem density. The pattern is:
+
+```{r classify-predictions-pattern, eval=FALSE}
+# Pattern for classifying model predictions on field data
+# (requires unscaled total stem density N_ha — stems per hectare, not normalised)
+arch <- classify_ssd(
+  ssd_abs     = observed_proportions * N_ha,   # proportions × total N → absolute counts
+  stem_number = N_ha
+)
+cat("Predicted archetype:", arch$category, "\n")
+
+# For a confusion table across all test stands:
+# obs_classes  <- sapply(seq_along(N_ha_vec), function(i)
+#   classify_ssd(obs_proportions[i, ] * N_ha_vec[i], stem_number = N_ha_vec[i])$category)
+# pred_classes <- sapply(seq_along(N_ha_vec), function(i)
+#   classify_ssd(pred_proportions[i, ] * N_ha_vec[i], stem_number = N_ha_vec[i])$category)
+# print(table(Observed = obs_classes, Predicted = pred_classes))
+```
+
+### 3. Comprehensive Prediction Quality Metrics
+
+**Methodological Context:** Two evaluation tools appear elsewhere in this vignette: `kl_divergence_metric` serves as the training loss and PFI performance metric (Part 1, subsection 1), and `analyze_and_visualize_predictions` produces per-stand visual diagnostics (Part 2, subsection 2). This subsection adds two programmatic complements. `jsd_divergence` computes the Jensen-Shannon divergence between any two probability distributions. Unlike KL divergence, JSD is symmetric — divergence(P, Q) = divergence(Q, P) — and bounded in [0, ln 2] nats, making it robust to near-zero predicted probabilities and directly comparable across stands with different structure types. `compute_prediction_metrics` combines KL, JSD, RMSE, and R² into a single one-row tibble suited to batch evaluation across external validation sets or paper-ready summary tables. Note that KL divergence remains the primary training and ranking metric per ADR-001; JSD, RMSE, and R² are complementary diagnostics.
+
+```{r jsd-divergence, eval=TRUE}
+# jsd_divergence operates on proportion vectors — no unscaled N required
+preds       <- deepReveal_example_data$top_model_predictions
+target_cols <- deepReveal_example_data$target_features
+pred_cols   <- paste0(target_cols, "_pred")
+
+# JSD between two stands' model predictions
+p_stand1 <- as.numeric(preds[1, pred_cols])
+p_stand2 <- as.numeric(preds[2, pred_cols])
+cat("JSD (stand 1 vs stand 2):", round(jsd_divergence(p_stand1, p_stand2), 4),
+    "nats  [max = ln(2) =", round(log(2), 4), "]\n")
+
+# JSD between observed and predicted proportions for the same stand
+p_obs  <- as.numeric(preds[1, target_cols])
+p_pred <- as.numeric(preds[1, pred_cols])
+cat("JSD (observed vs predicted, stand 1):",
+    round(jsd_divergence(p_obs, p_pred), 4), "nats\n")
+```
+
+`compute_prediction_metrics` requires absolute stem counts as the observed reference. The example below uses two reference SSDs from subsection 1 — treating the c_shape = 3.0 Weibull as a "predicted" distribution — to illustrate the function's interface in a fully self-contained way.
+
+```{r compute-prediction-metrics, eval=TRUE}
+# True SSD: Weibull c = 2.5 (absolute counts, from subsection 1)
+# Simulated "predicted" SSD: a different Weibull shape, normalised to proportions as a
+# model's softmax output would be
+pred_ssd_alt <- generate_ssd_weibull(c_shape = 3.0, N_target = N, BA_target = BA)
+pred_rel     <- pred_ssd_alt / sum(pred_ssd_alt)
+
+metrics <- compute_prediction_metrics(
+  true_abs = ssd_weibull,   # absolute stem counts
+  pred_rel = pred_rel,      # proportions (softmax-style output)
+  N_total  = N
+)
+print(metrics)
+# In a real workflow: true_abs = field-measured class counts (stems/ha per DBH class);
+# pred_rel = your model's softmax output; N_total = sum(true_abs).
+```
+
+**Noise robustness with `perturb_features`.** The `perturb_features` function complements the above by injecting multiplicative noise into selected input features before prediction — simulating field measurement uncertainty across multiple inputs at once. This differs from the error-effect analysis in Part 1 (which varies one feature by a fixed percentage in isolation): `perturb_features` perturbs several features simultaneously by specified multipliers and rescales them back to the [0, 1] training range. Pairing the perturbed predictions with `compute_prediction_metrics` then quantifies how much each noise scenario degrades prediction quality. A scalers list (containing `$min` and `$max` per feature, saved during model training) is required and is not included in `deepReveal_example_data`.
+
+```{r perturb-features, eval=FALSE}
+# perturb_features requires a scalers list from model training (not in deepReveal_example_data).
+# Example: inflate stem density and basal area inputs by 10 %
+perturbed_features <- perturb_features(
+  features_raw  = preds[, deepReveal_example_data$input_features],
+  perturb_feats = c("stem_number.ha_raw", "basal_area.m2.ha_raw"),
+  multipliers   = c(1.1, 1.1),
+  scalers       = my_scalers,    # list(min = named_vec, max = named_vec)
+  feature_order = deepReveal_example_data$input_features
+)
+# Then pass perturbed_features to your loaded model and evaluate:
+# compute_prediction_metrics(true_abs = ..., pred_rel = perturbed_pred_rel, N_total = ...)
+```
+
+
+## 4. Conclusion
 
 This vignette has guided you through the primary workflows of the `deepReveal` package, demonstrating how to move from a "black box" neural network to an interpretable tool for scientific inquiry. You have learned how to:
 
@@ -384,6 +529,8 @@ This vignette has guided you through the primary workflows of the `deepReveal` p
 * Define, train, and evaluate a custom neural network from scratch using the package's core training and visualization functions (define-and-train-custom-model, visualize-custom-model).
 
 * Systematically assess model parsimony by automatically retraining and comparing models with different feature subsets (run-fs-training, plot-heatmap).
+
+* Generate theoretical reference SSDs for any target N and BA using the Weibull, reverse-J, and bimodal generators; classify observed and predicted SSDs into ecological archetypes with `classify_ssd`; and compute a comprehensive suite of prediction quality metrics (KL, JSD, RMSE, R²) with `compute_prediction_metrics` (generate-reference-ssds, classify-reference-archetypes, compute-prediction-metrics).
 
 By following these steps, you can gain a much deeper understanding of your model's behavior, build confidence in its predictions, and produce robust, interpretable results.
 
