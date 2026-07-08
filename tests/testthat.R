@@ -1,2 +1,4 @@
 library(testthat)
-test_package("deepReveal")
+library(deepReveal)
+
+test_check("deepReveal")

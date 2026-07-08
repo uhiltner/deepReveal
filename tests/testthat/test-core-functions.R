@@ -113,7 +113,8 @@ test_that("deepReveal_example_data loads and has the correct structure", {
   expect_true(is.list(obj))
   expect_true(all(c("train_data", "val_data", "test_data",
                     "input_features", "target_features",
-                    "top_seed", "top_model_predictions") %in% names(obj)))
+                    "top_seed", "top_model_predictions",
+                    "top_model_metrics") %in% names(obj)))
 })
 
 test_that("deepReveal_example_data has correct split sizes", {
